@@ -10,13 +10,18 @@ SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 
 
-def parse_number(text):
-    """Pomoćna funkcija za čišćenje i pretvaranje teksta u broj."""
-    if not text or text == '-' or text == '':
+def parse_number(val):
+    if not val:
         return None
-    # Izvlači prvi broj ili decimalni broj iz teksta
-    match = re.search(r'[-+]?\d*\.?\d+', text.replace(',', '.'))
-    return float(match.group()) if match else None
+    # Zamena zareza tačkom i traženje prvog brojčanog zapisa (celog ili sa decimalom)
+    val = val.replace(',', '.')
+    match = re.search(r'[-+]?\d*\.?\d+', val)
+    if match:
+        try:
+            return float(match.group())
+        except ValueError:
+            return None
+    return None
 
 
 def scrape_rhmz():
@@ -37,84 +42,67 @@ def scrape_rhmz():
 
     data = []
     rows = table.find_all('tr')
-    if not rows:
-        return []
-
-    # 1. Pronalaženje tačnih indeksa kolona iz zaglavlja tabele
-    header_cols = [th.text.strip().lower() for th in rows[0].find_all(['th', 'td'])]
-
-    # Podrazumevani indeksi ako zaglavlje ne uspeti da se mapira
-    idx_grad = 0
-    idx_opis = 1
-    idx_temp = 2
-    idx_pritisak = 3
-    idx_vetar = 4
-    idx_vlaznost = 5
-
-    for i, h in enumerate(header_cols):
-        if 'stanica' in h or 'град' in h or 'mesto' in h:
-            idx_grad = i
-        elif 'vreme' in h or 'појаве' in h or 'opis' in h:
-            idx_opis = i
-        elif 'temp' in h or 'т' in h:
-            idx_temp = i
-        elif 'prit' in h or 'притисак' in h:
-            idx_pritisak = i
-        elif 'vetar' in h or 'ветар' in h:
-            idx_vetar = i
-        elif 'vlaga' in h or 'влажност' in h:
-            idx_vlaznost = i
 
     vreme_sada = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # 2. Parsiranje redova sa dinamičkim indeksima
-    for row in rows[1:]:
-        cols = row.find_all(['td', 'th'])
+    for row in rows:
+        cols = row.find_all('td')
+        # Uzimamo samo redove koji imaju bar 6 kolona
         if len(cols) >= 6:
-            grad = cols[idx_grad].text.strip() if len(cols) > idx_grad else None
+            grad = cols[0].text.strip()
+            if not grad or grad.lower() in ['stanica', 'станција', 'град']:
+                continue  # Preskačemo zaglavlja
 
-            # Temperatura
-            temp_text = cols[idx_temp].text.strip() if len(cols) > idx_temp else ''
-            temp = parse_number(temp_text)
+            # 1. Opis vremena (kolona 1)
+            opis_td = cols[1]
+            opis = ""
+            img = opis_td.find('img')
+            if img:
+                opis = img.get('title') or img.get('alt') or ""
+            if not opis:
+                opis = opis_td.get('title') or opis_td.text.strip()
 
-            # Pritisak
-            press_text = cols[idx_pritisak].text.strip() if len(cols) > idx_pritisak else ''
-            pritisak = parse_number(press_text)
+            # Ako je opis ostao samo broj (npr. id ikone), postavi ga na prazno
+            if opis.isdigit():
+                opis = ""
 
-            # Vlažnost
-            hum_text = cols[idx_vlaznost].text.strip() if len(cols) > idx_vlaznost else ''
-            vlaznost = parse_number(hum_text)
+            # 2. Temperatura (kolona 2)
+            temp = parse_number(cols[2].text.strip())
 
-            # Vetar
-            vetar_raw = cols[idx_vetar].text.strip() if len(cols) > idx_vetar else ''
-            pravac_vetra = vetar_raw.split()[0] if vetar_raw else None
-            brzina_vetra = parse_number(vetar_raw)
+            # 3. Pritisak (kolona 3)
+            pritisak_raw = cols[3].text.strip()
+            pritisak = parse_number(pritisak_raw)
 
-            # Opis vremena
-            opis_td = cols[idx_opis] if len(cols) > idx_opis else None
-            opis = ''
-            if opis_td:
-                img = opis_td.find('img')
-                if img and img.get('title'):
-                    opis = img.get('title').strip()
-                elif img and img.get('alt'):
-                    opis = img.get('alt').strip()
-                elif opis_td.get('title'):
-                    opis = opis_td.get('title').strip()
-                else:
-                    opis = opis_td.text.strip()
+            # 4. Vetar (kolona 4) - primer: "NW 2", "SE 11", "mirno"
+            vetar_raw = cols[4].text.strip()
+            pravac_vetra = None
+            brzina_vetra = None
 
-            if grad:
-                data.append({
-                    "grad": grad,
-                    "temperatura": temp,
-                    "pritisak": pritisak,
-                    "vlaznost": int(vlaznost) if vlaznost is not None else None,
-                    "pravac_vetra": pravac_vetra,
-                    "brzina_vetra": brzina_vetra,
-                    "opis_vremena": opis,
-                    "vreme_osmotreno": vreme_sada
-                })
+            if vetar_raw:
+                parts = vetar_raw.split()
+                if len(parts) >= 2:
+                    pravac_vetra = parts[0]
+                    brzina_vetra = parse_number(parts[1])
+                elif len(parts) == 1:
+                    if parts[0].isdigit():
+                        brzina_vetra = parse_number(parts[0])
+                    else:
+                        pravac_vetra = parts[0]
+
+            # 5. Vlažnost (kolona 5)
+            vlaznost_raw = cols[5].text.strip()
+            vlaznost = parse_number(vlaznost_raw)
+
+            data.append({
+                "grad": grad,
+                "temperatura": temp,
+                "pritisak": pritisak,
+                "vlaznost": int(vlaznost) if vlaznost is not None else None,
+                "pravac_vetra": pravac_vetra,
+                "brzina_vetra": brzina_vetra,
+                "opis_vremena": opis,
+                "vreme_osmotreno": vreme_sada
+            })
 
     return data
 
