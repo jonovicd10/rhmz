@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="sr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vremenske Prilike - Srbija (Istorija i Trenutno)</title>
+    <!-- Tailwind CSS za brzi i moderan dizajn -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Supabase JS Klijent -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- Chart.js za prikaz grafikona -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-gray-100 min-h-screen text-gray-800 p-4 md:p-8">
+
+    <div class="max-w-5xl mx-auto space-y-6">
+        <!-- Zaglavlje -->
+        <header class="bg-white p-6 rounded-xl shadow-md flex flex-col sm:flex-row justify-between items-center gap-4">
+            <div>
+                <h1 class="text-2xl font-bold text-blue-600">🌤️ RHMZ Vremenski Podaci</h1>
+                <p class="text-sm text-gray-500">Automatsko osvežavanje na svakih 20 minuta</p>
+            </div>
+            <!-- Izbor grada -->
+            <div class="w-full sm:w-64">
+                <label for="citySelect" class="block text-xs font-semibold uppercase text-gray-500 mb-1">Izaberi grad:</label>
+                <select id="citySelect" class="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-medium">
+                    <option value="">Učitavanje gradova...</option>
+                </select>
+            </div>
+        </header>
+
+        <!-- Trenutno stanje za izabrani grad -->
+        <div id="currentCard" class="bg-white p-6 rounded-xl shadow-md hidden">
+            <div class="flex justify-between items-start mb-4 border-b pb-3">
+                <div>
+                    <h2 id="cityName" class="text-2xl font-bold text-gray-800">--</h2>
+                    <p id="timeObserved" class="text-xs text-gray-400">--</p>
+                </div>
+                <span id="weatherDesc" class="px-3 py-1 bg-blue-100 text-blue-800 text-sm font-semibold rounded-full">--</span>
+            </div>
+
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
+                <div class="p-3 bg-blue-50 rounded-lg">
+                    <p class="text-xs text-gray-500">Temperatura</p>
+                    <p id="tempVal" class="text-2xl font-bold text-blue-600">-- °C</p>
+                </div>
+                <div class="p-3 bg-gray-50 rounded-lg">
+                    <p class="text-xs text-gray-500">Pritisak</p>
+                    <p id="pressVal" class="text-sm font-semibold text-gray-700">-- hPa</p>
+                </div>
+                <div class="p-3 bg-gray-50 rounded-lg">
+                    <p class="text-xs text-gray-500">Vlažnost</p>
+                    <p id="humVal" class="text-sm font-semibold text-gray-700">-- %</p>
+                </div>
+                <div class="p-3 bg-gray-50 rounded-lg">
+                    <p class="text-xs text-gray-500">Vetar</p>
+                    <p id="windVal" class="text-sm font-semibold text-gray-700">--</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Grafikon istorije -->
+        <div class="bg-white p-6 rounded-xl shadow-md">
+            <h3 class="text-lg font-bold mb-4 text-gray-700">Istorija temperature za izabrani grad</h3>
+            <div class="relative h-72 w-full">
+                <canvas id="tempChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // === Tvoji Supabase Kredencijali ===
+        const SUPABASE_URL = "https://gadeilbhhastxyoktped.supabase.co";
+        const SUPABASE_ANON_KEY = "sb_publishable_p2OWcDZ5x2KknG1mwSGPmg_7ie3HmJS";
+
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        let chartInstance = null;
+
+        // Inicijalizacija pri učitavanju
+        window.addEventListener('DOMContentLoaded', async () => {
+            await loadCities();
+
+            document.getElementById('citySelect').addEventListener('change', (e) => {
+                if (e.target.value) {
+                    loadCityData(e.target.value);
+                }
+            });
+        });
+
+        // 1. Učitavanje liste gradova iz baze
+        async function loadCities() {
+            const { data, error } = await supabaseClient
+                .from('merenja')
+                .select('grad')
+                .order('grad', { ascending: true });
+
+            if (error) {
+                console.error("Greška pri učitavanju gradova:", error);
+                return;
+            }
+
+            // Unikatni gradovi
+            const uniqueCities = [...new Set(data.map(item => item.grad))];
+            const select = document.getElementById('citySelect');
+            select.innerHTML = '';
+
+            uniqueCities.forEach(grad => {
+                const opt = document.createElement('option');
+                opt.value = grad;
+                opt.textContent = grad;
+                select.appendChild(opt);
+            });
+
+            // Podrazumevano izaberi prvi grad (npr. Beograd)
+            if (uniqueCities.length > 0) {
+                select.value = uniqueCities.includes('Beograd') ? 'Beograd' : uniqueCities[0];
+                loadCityData(select.value);
+            }
+        }
+
+        // 2. Učitavanje trenutnog stanja i istorije za izabrani grad
+        async function loadCityData(grad) {
+            const { data, error } = await supabaseClient
+                .from('merenja')
+                .select('*')
+                .eq('grad', grad)
+                .order('vreme_osmotreno', { ascending: true })
+                .limit(100); // Uzimamo poslednjih 100 merenja
+
+            if (error || !data || data.length === 0) return;
+
+            // Prikaz trenutnog (poslednjeg) stanja
+            const latest = data[data.length - 1];
+            document.getElementById('currentCard').classList.remove('hidden');
+            document.getElementById('cityName').textContent = latest.grad;
+            document.getElementById('timeObserved').textContent = "Poslednje osmotreno: " + new Date(latest.vreme_osmotreno).toLocaleString('sr-RS');
+            document.getElementById('weatherDesc').textContent = latest.opis_vremena || 'Bez opisa';
+            document.getElementById('tempVal').textContent = (latest.temperatura !== null ? latest.temperatura : '--') + ' °C';
+            document.getElementById('pressVal').textContent = (latest.pritisak !== null ? latest.pritisak : '--') + ' hPa';
+            document.getElementById('humVal').textContent = (latest.vlaznost !== null ? latest.vlaznost : '--') + ' %';
+            document.getElementById('windVal').textContent = (latest.pravac_vetra || '') + ' ' + (latest.brzina_vetra ? latest.brzina_vetra + ' m/s' : '');
+
+            // Prikaz grafikona
+            renderChart(data);
+        }
+
+        // 3. Iscrtavanje Grafikona
+        function renderChart(historyData) {
+            const labels = historyData.map(d => {
+                const date = new Date(d.vreme_osmotreno);
+                return date.getHours().toString().padStart(2, '0') + ':' + date.getMinutes().toString().padStart(2, '0') + 'h';
+            });
+
+            const temps = historyData.map(d => d.temperatura);
+
+            const ctx = document.getElementById('tempChart').getContext('2d');
+
+            if (chartInstance) {
+                chartInstance.destroy();
+            }
+
+            chartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Temperatura (°C)',
+                        data: temps,
+                        borderColor: '#2563eb',
+                        backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                        fill: true,
+                        tension: 0.3,
+                        pointRadius: 3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: {
+                            ticks: {
+                                callback: function(value) { return value + '°C'; }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
