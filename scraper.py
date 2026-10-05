@@ -39,7 +39,7 @@ def scrape_rhmz():
         print("Tabela nije pronađena na stranici.")
         return []
 
-    # 1. Pronalaženje i mapiranje zaglavlja (Header Mapping)
+    # Mapiranje kolona iz zaglavlja (<th>)
     header_map = {}
     header_row = table.find('tr')
 
@@ -61,7 +61,7 @@ def scrape_rhmz():
                 header_map['opis'] = idx
 
     data = []
-    rows = table.find_all('tr')[1:]  # preskačemo red sa zaglavljem
+    rows = table.find_all('tr')[1:]
     vreme_sada = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     for row in rows:
@@ -69,14 +69,15 @@ def scrape_rhmz():
         if len(cols) < 3:
             continue
 
-        # Dohvatanje grada
         grad_idx = header_map.get('grad', 0)
         grad = cols[grad_idx].text.strip() if len(cols) > grad_idx else ""
 
-        if not grad or grad.lower() in ['stanica', 'станција', 'град', 'mesto']:
+        # FILTRIRANJE: Ignorišemo naslove, fusnote i napomene (npr. "(1) Podaci...", "(2)...")
+        if not grad or grad.startswith('(') or any(x in grad.lower() for x in
+                                                   ['stanica', 'станција', 'град', 'mesto', 'podaci', 'подаци', 'hpa',
+                                                    'subjektivni']):
             continue
 
-        # Dohvatanje Opisa (prvo traži sliku u celom redu ili iz određene kolone)
         opis = ""
         opis_idx = header_map.get('opis')
         if opis_idx is not None and len(cols) > opis_idx:
@@ -89,7 +90,6 @@ def scrape_rhmz():
             if not opis:
                 opis = cols[opis_idx].text.strip()
 
-        # Fallback za opis ako nije pronađen preko zaglavlja
         if not opis:
             for col in cols:
                 img = col.find('img')
@@ -97,7 +97,6 @@ def scrape_rhmz():
                     opis = img.get('title') or img.get('alt') or ""
                     break
 
-        # Dohvatanje ostalih vrednosti na osnovu mapiranih indeksa
         def get_col_text(key):
             idx = header_map.get(key)
             if idx is not None and len(cols) > idx:
@@ -109,14 +108,6 @@ def scrape_rhmz():
         vetar_txt = get_col_text('vetar')
         vlaznost_txt = get_col_text('vlaznost')
 
-        # Fallback na stare pozicije ako zaglavlje nije uspešno mapirano
-        if not header_map:
-            temp_txt = cols[2].text.strip() if len(cols) > 2 else ""
-            pritisak_txt = cols[3].text.strip() if len(cols) > 3 else ""
-            vetar_txt = cols[4].text.strip() if len(cols) > 4 else ""
-            vlaznost_txt = cols[5].text.strip() if len(cols) > 5 else ""
-
-        # Parsiranje dobijenih tekstualnih vrednosti
         temp = parse_number(temp_txt)
         pritisak = parse_number(pritisak_txt)
 
