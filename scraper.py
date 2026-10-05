@@ -22,7 +22,6 @@ def parse_number(val):
             return None
     return None
 
-
 def scrape_rhmz():
     url = "https://www.hidmet.gov.rs/ciril/osmotreni/index.php"
     headers = {
@@ -52,10 +51,9 @@ def scrape_rhmz():
         if not grad or grad.lower() in ['stanica', 'станција', 'град', 'mesto']:
             continue
 
-        # 1. Izvlačenje opisa ako postoji slika ili tekst
+        # 1. Tražimo opis (sliku)
         opis = ""
-        non_data_cols = []
-        for col in cols[1:]:
+        for col in cols:
             img = col.find('img')
             if img:
                 opis = img.get('title') or img.get('alt') or ""
@@ -64,13 +62,18 @@ def scrape_rhmz():
                     opis = os.path.splitext(src_filename)[0].replace('_', ' ').strip()
                 break
 
-        # 2. Odvajanje kolona sa podacima od kolone sa opisom
-        data_cols = []
+        # 2. Uzimamo sve ćelije sa tekstom (osim prve koja je grad i ćelije sa slikom)
+        text_cols = []
         for col in cols[1:]:
-            # Ako je ovo kolona sa slikom opisa, preskačemo je u numeričkoj analizi
             if col.find('img'):
                 continue
-            data_cols.append(col.text.strip())
+            text_cols.append(col.text.strip())
+
+        # Na RHMZ sajtu struktura tekstualnih kolona kada se ukloni slika je uvek:
+        # [0]: Temperatura (npr. "26")
+        # [1]: Pritisak (npr. "1005.1") -- *ponekad nedostaje*
+        # [-2]: Vetar (npr. "W 1" ili "NW 2") -- *uvek predposlednji*
+        # [-1]: Vlažnost (npr. "21" ili "21%") -- *uvek poslednji*
 
         temp = None
         pritisak = None
@@ -78,16 +81,18 @@ def scrape_rhmz():
         brzina_vetra = None
         vlaznost = None
 
-        # Očekivani redosled numeričkih kolona na RHMZ sajtu:
-        # 0: Temperatura, 1: Pritisak, 2: Vetar, 3: Vlažnost
+        if len(text_cols) >= 1:
+            temp = parse_number(text_cols[0])
 
-        # Ako imamo sve 4 kolone sa podacima
-        if len(data_cols) >= 4:
-            temp = parse_number(data_cols[0])
-            pritisak = parse_number(data_cols[1])
+        # Poslednja kolona je UVEK vlažnost
+        if len(text_cols) >= 2:
+            vlaznost_num = parse_number(text_cols[-1])
+            if vlaznost_num is not None and 0 <= vlaznost_num <= 100:
+                vlaznost = int(vlaznost_num)
 
-            # Vetar (npr. "W 1" ili "NW 2")
-            vetar_raw = data_cols[2]
+        # Predposlednja kolona je UVEK vetar
+        if len(text_cols) >= 3:
+            vetar_raw = text_cols[-2]
             if vetar_raw:
                 parts = vetar_raw.split()
                 if len(parts) >= 2:
@@ -100,28 +105,11 @@ def scrape_rhmz():
                         pravac_vetra = parts[0]
                         brzina_vetra = 0.0
 
-            # Vlažnost
-            vlaznost_num = parse_number(data_cols[3])
-            vlaznost = int(vlaznost_num) if vlaznost_num is not None else None
-
-        # Fallback ako nedostaje neka od kolona (pametno mapiranje)
-        else:
-            for txt in data_cols:
-                num = parse_number(txt)
-                if any(p in txt for p in ['N', 'S', 'E', 'W', 'NW', 'NE', 'SW', 'SE', 'mirno', 'мирно']):
-                    parts = txt.split()
-                    pravac_vetra = parts[0] if parts else None
-                    if len(parts) > 1:
-                        brzina_vetra = parse_number(parts[1])
-                    continue
-
-                if num is not None:
-                    if num > 800 and num < 1100:
-                        pritisak = num
-                    elif temp is None and -40 <= num <= 50:
-                        temp = num
-                    elif vlaznost is None and '%' in txt:
-                        vlaznost = int(num)
+        # Pritisak je kolona između temperature i vetra (ako postoji)
+        if len(text_cols) >= 4:
+            press_num = parse_number(text_cols[1])
+            if press_num and press_num > 800:
+                pritisak = press_num
 
         data.append({
             "grad": grad,
