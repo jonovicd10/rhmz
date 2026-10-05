@@ -22,6 +22,7 @@ def parse_number(val):
             return None
     return None
 
+
 def scrape_rhmz():
     url = "https://www.hidmet.gov.rs/ciril/osmotreni/index.php"
     headers = {
@@ -38,78 +39,103 @@ def scrape_rhmz():
         print("Tabela nije pronađena na stranici.")
         return []
 
+    # 1. Pronalaženje i mapiranje zaglavlja (Header Mapping)
+    header_map = {}
+    header_row = table.find('tr')
+
+    if header_row:
+        headers = header_row.find_all(['th', 'td'])
+        for idx, h in enumerate(headers):
+            txt = h.text.strip().lower()
+            if 'стан' in txt or 'grad' in txt or 'mesto' in txt:
+                header_map['grad'] = idx
+            elif 'темп' in txt:
+                header_map['temp'] = idx
+            elif 'притис' in txt or 'pritisak' in txt:
+                header_map['pritisak'] = idx
+            elif 'ветар' in txt or 'вет' in txt or 'vetar' in txt:
+                header_map['vetar'] = idx
+            elif 'влаж' in txt or 'vlaznost' in txt:
+                header_map['vlaznost'] = idx
+            elif 'опис' in txt or 'појав' in txt or 'vreme' in txt:
+                header_map['opis'] = idx
+
     data = []
-    rows = table.find_all('tr')
+    rows = table.find_all('tr')[1:]  # preskačemo red sa zaglavljem
     vreme_sada = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     for row in rows:
         cols = row.find_all('td')
-        if len(cols) < 4:
+        if len(cols) < 3:
             continue
 
-        grad = cols[0].text.strip()
+        # Dohvatanje grada
+        grad_idx = header_map.get('grad', 0)
+        grad = cols[grad_idx].text.strip() if len(cols) > grad_idx else ""
+
         if not grad or grad.lower() in ['stanica', 'станција', 'град', 'mesto']:
             continue
 
-        # 1. Tražimo opis (sliku)
+        # Dohvatanje Opisa (prvo traži sliku u celom redu ili iz određene kolone)
         opis = ""
-        for col in cols:
-            img = col.find('img')
+        opis_idx = header_map.get('opis')
+        if opis_idx is not None and len(cols) > opis_idx:
+            img = cols[opis_idx].find('img')
             if img:
                 opis = img.get('title') or img.get('alt') or ""
                 if not opis and img.get('src'):
                     src_filename = os.path.basename(img['src'])
                     opis = os.path.splitext(src_filename)[0].replace('_', ' ').strip()
-                break
+            if not opis:
+                opis = cols[opis_idx].text.strip()
 
-        # 2. Uzimamo sve ćelije sa tekstom (osim prve koja je grad i ćelije sa slikom)
-        text_cols = []
-        for col in cols[1:]:
-            if col.find('img'):
-                continue
-            text_cols.append(col.text.strip())
+        # Fallback za opis ako nije pronađen preko zaglavlja
+        if not opis:
+            for col in cols:
+                img = col.find('img')
+                if img:
+                    opis = img.get('title') or img.get('alt') or ""
+                    break
 
-        # Na RHMZ sajtu struktura tekstualnih kolona kada se ukloni slika je uvek:
-        # [0]: Temperatura (npr. "26")
-        # [1]: Pritisak (npr. "1005.1") -- *ponekad nedostaje*
-        # [-2]: Vetar (npr. "W 1" ili "NW 2") -- *uvek predposlednji*
-        # [-1]: Vlažnost (npr. "21" ili "21%") -- *uvek poslednji*
+        # Dohvatanje ostalih vrednosti na osnovu mapiranih indeksa
+        def get_col_text(key):
+            idx = header_map.get(key)
+            if idx is not None and len(cols) > idx:
+                return cols[idx].text.strip()
+            return ""
 
-        temp = None
-        pritisak = None
+        temp_txt = get_col_text('temp')
+        pritisak_txt = get_col_text('pritisak')
+        vetar_txt = get_col_text('vetar')
+        vlaznost_txt = get_col_text('vlaznost')
+
+        # Fallback na stare pozicije ako zaglavlje nije uspešno mapirano
+        if not header_map:
+            temp_txt = cols[2].text.strip() if len(cols) > 2 else ""
+            pritisak_txt = cols[3].text.strip() if len(cols) > 3 else ""
+            vetar_txt = cols[4].text.strip() if len(cols) > 4 else ""
+            vlaznost_txt = cols[5].text.strip() if len(cols) > 5 else ""
+
+        # Parsiranje dobijenih tekstualnih vrednosti
+        temp = parse_number(temp_txt)
+        pritisak = parse_number(pritisak_txt)
+
+        vlaznost_num = parse_number(vlaznost_txt)
+        vlaznost = int(vlaznost_num) if vlaznost_num is not None else None
+
         pravac_vetra = None
         brzina_vetra = None
-        vlaznost = None
-
-        if len(text_cols) >= 1:
-            temp = parse_number(text_cols[0])
-
-        # Poslednja kolona je UVEK vlažnost
-        if len(text_cols) >= 2:
-            vlaznost_num = parse_number(text_cols[-1])
-            if vlaznost_num is not None and 0 <= vlaznost_num <= 100:
-                vlaznost = int(vlaznost_num)
-
-        # Predposlednja kolona je UVEK vetar
-        if len(text_cols) >= 3:
-            vetar_raw = text_cols[-2]
-            if vetar_raw:
-                parts = vetar_raw.split()
-                if len(parts) >= 2:
+        if vetar_txt:
+            parts = vetar_txt.split()
+            if len(parts) >= 2:
+                pravac_vetra = parts[0]
+                brzina_vetra = parse_number(parts[1])
+            elif len(parts) == 1:
+                if parts[0].isdigit():
+                    brzina_vetra = parse_number(parts[0])
+                else:
                     pravac_vetra = parts[0]
-                    brzina_vetra = parse_number(parts[1])
-                elif len(parts) == 1:
-                    if parts[0].isdigit():
-                        brzina_vetra = parse_number(parts[0])
-                    else:
-                        pravac_vetra = parts[0]
-                        brzina_vetra = 0.0
-
-        # Pritisak je kolona između temperature i vetra (ako postoji)
-        if len(text_cols) >= 4:
-            press_num = parse_number(text_cols[1])
-            if press_num and press_num > 800:
-                pritisak = press_num
+                    brzina_vetra = 0.0
 
         data.append({
             "grad": grad,
