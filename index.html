@@ -112,12 +112,12 @@
                 select.appendChild(opt);
             });
 
-            // Podrazumevano izaberi prvi grad (npr. Zajecar)
+            // Podrazumevano izaberi Zaječar
             if (uniqueCities.length > 0) {
-                // Proverava da li postoji Zaječar u listi; ako postoji izabere njega, u suprotnom prvi grad iz liste
                 select.value = uniqueCities.includes('Зајечар') ? 'Зајечар' : (uniqueCities.includes('Zaječar') ? 'Zaječar' : uniqueCities[0]);
                 loadCityData(select.value);
             }
+        } // <--- OVA ZAGRADA JE NEDOSTAJALA!
 
         // 2. Učitavanje trenutnog stanja i istorije za izabrani grad
         async function loadCityData(grad) {
@@ -126,7 +126,7 @@
                 .select('*')
                 .eq('grad', grad)
                 .order('vreme_osmotreno', { ascending: true })
-                .limit(100); // Uzimamo poslednjih 100 merenja
+                .limit(100);
 
             if (error || !data || data.length === 0) return;
 
@@ -134,12 +134,21 @@
             const latest = data[data.length - 1];
             document.getElementById('currentCard').classList.remove('hidden');
             document.getElementById('cityName').textContent = latest.grad;
-            document.getElementById('timeObserved').textContent = "Poslednje osmotreno: " + new Date(latest.vreme_osmotreno).toLocaleString('sr-RS');
+
+            // Formatiranje vremena za prikaz na kartici
+            const formatiranoVreme = new Date(latest.vreme_osmotreno).toLocaleString('sr-RS');
+            document.getElementById('timeObserved').textContent = "Poslednje osmotreno: " + formatiranoVreme;
+
             document.getElementById('weatherDesc').textContent = latest.opis_vremena || 'Bez opisa';
             document.getElementById('tempVal').textContent = (latest.temperatura !== null ? latest.temperatura : '--') + ' °C';
             document.getElementById('pressVal').textContent = (latest.pritisak !== null ? latest.pritisak : '--') + ' hPa';
             document.getElementById('humVal').textContent = (latest.vlaznost !== null ? latest.vlaznost : '--') + ' %';
-            document.getElementById('windVal').textContent = (latest.pravac_vetra || '') + ' ' + (latest.brzina_vetra ? latest.brzina_vetra + ' m/s' : '');
+
+            let vetarText = '--';
+            if (latest.pravac_vetra || latest.brzina_vetra !== null) {
+                vetarText = `${latest.pravac_vetra || ''} ${latest.brzina_vetra !== null ? latest.brzina_vetra + ' m/s' : ''}`.trim();
+            }
+            document.getElementById('windVal').textContent = vetarText;
 
             // Prikaz grafikona
             renderChart(data);
@@ -149,7 +158,7 @@
         function renderChart(historyData) {
             const labels = historyData.map(d => {
                 const date = new Date(d.vreme_osmotreno);
-                return date.getHours().toString().padStart(2, '0') + ':' + date.getMinutes().toString().padStart(2, '0') + 'h';
+                return date.toLocaleTimeString('sr-RS', { hour: '2-digit', minute: '2-digit' }) + 'h';
             });
 
             const temps = historyData.map(d => d.temperatura);
