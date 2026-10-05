@@ -112,12 +112,12 @@
                 select.appendChild(opt);
             });
 
-            // Podrazumevano izaberi prvi grad (npr. Beograd)
+            // Podrazumevano izaberi prvi grad (npr. Zajecar)
             if (uniqueCities.length > 0) {
-                select.value = uniqueCities.includes('Beograd') ? 'Beograd' : uniqueCities[0];
+                // Proverava da li postoji Zaječar u listi; ako postoji izabere njega, u suprotnom prvi grad iz liste
+                select.value = uniqueCities.includes('Зајечар') ? 'Зајечар' : (uniqueCities.includes('Zaječar') ? 'Zaječar' : uniqueCities[0]);
                 loadCityData(select.value);
             }
-        }
 
         // 2. Učitavanje trenutnog stanja i istorije za izabrani grad
         async function loadCityData(grad) {
