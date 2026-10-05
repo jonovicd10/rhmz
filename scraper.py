@@ -13,7 +13,6 @@ SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 def parse_number(val):
     if not val:
         return None
-    # Zamena zareza tačkom i traženje prvog brojčanog zapisa (celog ili sa decimalom)
     val = val.replace(',', '.')
     match = re.search(r'[-+]?\d*\.?\d+', val)
     if match:
@@ -22,7 +21,6 @@ def parse_number(val):
         except ValueError:
             return None
     return None
-
 
 def scrape_rhmz():
     url = "https://www.hidmet.gov.rs/ciril/osmotreni/index.php"
@@ -42,67 +40,77 @@ def scrape_rhmz():
 
     data = []
     rows = table.find_all('tr')
-
     vreme_sada = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     for row in rows:
         cols = row.find_all('td')
-        # Uzimamo samo redove koji imaju bar 6 kolona
-        if len(cols) >= 6:
-            grad = cols[0].text.strip()
-            if not grad or grad.lower() in ['stanica', 'станција', 'град']:
-                continue  # Preskačemo zaglavlja
+        if not cols:
+            continue
 
-            # 1. Opis vremena (kolona 1)
-            opis_td = cols[1]
-            opis = ""
-            img = opis_td.find('img')
+        # Prva kolona je uvek naziv grada
+        grad = cols[0].text.strip()
+        if not grad or grad.lower() in ['stanica', 'станција', 'град', 'станница']:
+            continue
+
+        # Prikupljamo tekstualni sadržaj ostalih ćelija u redu
+        cell_texts = [c.text.strip() for c in cols[1:]]
+
+        opis = ""
+        temp = None
+        pritisak = None
+        vlaznost = None
+        pravac_vetra = None
+        brzina_vetra = None
+
+        # 1. Opis (tražimo img ili title u drugoj ćeliji)
+        if len(cols) > 1:
+            img = cols[1].find('img')
             if img:
                 opis = img.get('title') or img.get('alt') or ""
             if not opis:
-                opis = opis_td.get('title') or opis_td.text.strip()
+                txt = cols[1].text.strip()
+                if not txt.isdigit():  # Ako nije samo ID ikone
+                    opis = txt
 
-            # Ako je opis ostao samo broj (npr. id ikone), postavi ga na prazno
-            if opis.isdigit():
-                opis = ""
+        # 2. Inteligentno mapiranje numeričkih i tekstualnih polja po vrednostima
+        numeric_values = []
+        for text in cell_texts:
+            num = parse_number(text)
+            numeric_values.append((text, num))
 
-            # 2. Temperatura (kolona 2)
-            temp = parse_number(cols[2].text.strip())
+        # Analiza preostalih kolona
+        for text, num in numeric_values:
+            if num is None:
+                # Moguće da je pravac vetra (npr. "SE", "NW", "mirno")
+                if text and len(text) <= 5 and not opis:
+                    pravac_vetra = text
+                continue
 
-            # 3. Pritisak (kolona 3)
-            pritisak_raw = cols[3].text.strip()
-            pritisak = parse_number(pritisak_raw)
+            # Pritisak: vrednosti su obično preko 800 hPa
+            if num > 800 and num < 1100:
+                pritisak = num
+            # Vlažnost: procenat 0-100% (obično celobrojna vrednost bez decimale)
+            elif '%' in text or (num >= 0 and num <= 100 and '.' not in text and vlaznost is None and temp is not None):
+                vlaznost = int(num)
+            # Temperatura: razumni opseg za našu klimu (-40 do +50 °C)
+            elif temp is None and -40 <= num <= 50:
+                temp = num
+            # Vetar (brzina)
+            elif brzina_vetra is None and 0 <= num <= 60:
+                brzina_vetra = num
+                if not pravac_vetra and ' ' in text:
+                    pravac_vetra = text.split()[0]
 
-            # 4. Vetar (kolona 4) - primer: "NW 2", "SE 11", "mirno"
-            vetar_raw = cols[4].text.strip()
-            pravac_vetra = None
-            brzina_vetra = None
-
-            if vetar_raw:
-                parts = vetar_raw.split()
-                if len(parts) >= 2:
-                    pravac_vetra = parts[0]
-                    brzina_vetra = parse_number(parts[1])
-                elif len(parts) == 1:
-                    if parts[0].isdigit():
-                        brzina_vetra = parse_number(parts[0])
-                    else:
-                        pravac_vetra = parts[0]
-
-            # 5. Vlažnost (kolona 5)
-            vlaznost_raw = cols[5].text.strip()
-            vlaznost = parse_number(vlaznost_raw)
-
-            data.append({
-                "grad": grad,
-                "temperatura": temp,
-                "pritisak": pritisak,
-                "vlaznost": int(vlaznost) if vlaznost is not None else None,
-                "pravac_vetra": pravac_vetra,
-                "brzina_vetra": brzina_vetra,
-                "opis_vremena": opis,
-                "vreme_osmotreno": vreme_sada
-            })
+        data.append({
+            "grad": grad,
+            "temperatura": temp,
+            "pritisak": pritisak,
+            "vlaznost": int(vlaznost) if vlaznost is not None else None,
+            "pravac_vetra": pravac_vetra,
+            "brzina_vetra": brzina_vetra,
+            "opis_vremena": opis,
+            "vreme_osmotreno": vreme_sada
+        })
 
     return data
 
