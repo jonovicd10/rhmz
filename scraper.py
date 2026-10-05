@@ -46,7 +46,20 @@ def scrape_rhmz():
             pritisak = parse_number(cols[2].text.strip())
             vlaznost = parse_number(cols[3].text.strip())
             vetar_raw = cols[4].text.strip()  # npr. "SE 2" ili "C"
-            opis = cols[5].text.strip()
+
+            # --- IZVLAČENJE TEKSTUALNOG OPISA VREMENA ---
+            opis_td = cols[5]
+            img = opis_td.find('img')
+
+            # Prvo tražimo title ili alt na slici (ikoni), pa u samoj ćeliji
+            if img and img.get('title'):
+                opis = img.get('title').strip()
+            elif img and img.get('alt'):
+                opis = img.get('alt').strip()
+            elif opis_td.get('title'):
+                opis = opis_td.get('title').strip()
+            else:
+                opis = opis_td.text.strip()
 
             # Razdvajanje pravca i brzine vetra
             pravac_vetra = vetar_raw.split()[0] if vetar_raw else None
