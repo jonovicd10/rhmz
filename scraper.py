@@ -22,7 +22,6 @@ def parse_number(val):
             return None
     return None
 
-
 def scrape_rhmz():
     url = "https://www.hidmet.gov.rs/ciril/osmotreni/index.php"
     headers = {
@@ -45,44 +44,38 @@ def scrape_rhmz():
 
     for row in rows:
         cols = row.find_all('td')
-        # Standardni red RHMZ tabele ima najmanje 6 kolona
-        if len(cols) >= 6:
-            grad = cols[0].text.strip()
+        if len(cols) < 4:
+            continue
 
-            # Preskačemo naslovne redove tabele
-            if not grad or grad.lower() in ['stanica', 'станција', 'град', 'mesto']:
-                continue
+        grad = cols[0].text.strip()
+        if not grad or grad.lower() in ['stanica', 'станција', 'град', 'mesto']:
+            continue
 
-            # 1. OPIS VREMENA (kolona 1)
-            opis_td = cols[1]
-            opis = ""
-            img = opis_td.find('img')
+        opis = ""
+        temp = None
+        pritisak = None
+        vlaznost = None
+        pravac_vetra = None
+        brzina_vetra = None
+
+        # 1. Potraga za slikom/opisom u svim ćelijama reda
+        for col in cols[1:]:
+            img = col.find('img')
             if img:
-                # Izvlačimo iz title, alt ili naziva same slike
                 opis = img.get('title') or img.get('alt') or ""
                 if not opis and img.get('src'):
                     src_filename = os.path.basename(img['src'])
-                    # npr. pretezno_vedro.gif -> pretezno vedro
                     opis = os.path.splitext(src_filename)[0].replace('_', ' ').strip()
+                break
 
-            if not opis:
-                txt = opis_td.text.strip()
-                if not txt.isdigit():
-                    opis = txt
+        # 2. Parsiranje svih preostalih ćelija po sadržaju
+        for col in cols[1:]:
+            txt = col.text.strip()
+            num = parse_number(txt)
 
-            # 2. TEMPERATURA (kolona 2)
-            temp = parse_number(cols[2].text.strip())
-
-            # 3. PRITISAK (kolona 3)
-            pritisak = parse_number(cols[3].text.strip())
-
-            # 4. VETAR (kolona 4) - npr. "W 1", "NW 2", "mirno"
-            vetar_raw = cols[4].text.strip()
-            pravac_vetra = None
-            brzina_vetra = None
-
-            if vetar_raw:
-                parts = vetar_raw.split()
+            # Ako ćelija sadrži pravac vetra (npr. "NW 2", "W 1", "SE", "mirno")
+            if any(p in txt for p in ['N', 'S', 'E', 'W', 'NW', 'NE', 'SW', 'SE', 'mirno', 'мирно']):
+                parts = txt.split()
                 if len(parts) >= 2:
                     pravac_vetra = parts[0]
                     brzina_vetra = parse_number(parts[1])
@@ -91,22 +84,32 @@ def scrape_rhmz():
                         brzina_vetra = parse_number(parts[0])
                     else:
                         pravac_vetra = parts[0]
-                        brzina_vetra = 0.0
+                continue
 
-            # 5. VLAŽNOST (kolona 5) - npr. "21"
-            vlaznost_raw = cols[5].text.strip()
-            vlaznost = parse_number(vlaznost_raw)
+            if num is None:
+                # Ako je ostao tekst koji nije broj, a nemamo opis
+                if txt and not txt.isdigit() and not opis and len(txt) > 3:
+                    opis = txt
+                continue
 
-            data.append({
-                "grad": grad,
-                "temperatura": temp,
-                "pritisak": pritisak,
-                "vlaznost": int(vlaznost) if vlaznost is not None else None,
-                "pravac_vetra": pravac_vetra,
-                "brzina_vetra": brzina_vetra,
-                "opis_vremena": opis,
-                "vreme_osmotreno": vreme_sada
-            })
+            # Klasifikacija po opsegu vrednosti
+            if num > 800 and num < 1100:
+                pritisak = num
+            elif temp is None and -40 <= num <= 50:
+                temp = num
+            elif '%' in txt or (vlaznost is None and 0 <= num <= 100 and '.' not in txt):
+                vlaznost = int(num)
+
+        data.append({
+            "grad": grad,
+            "temperatura": temp,
+            "pritisak": pritisak,
+            "vlaznost": vlaznost,
+            "pravac_vetra": pravac_vetra,
+            "brzina_vetra": brzina_vetra,
+            "opis_vremena": opis if opis else "Bez opisa",
+            "vreme_osmotreno": vreme_sada
+        })
 
     return data
 
