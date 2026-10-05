@@ -38,20 +38,16 @@ def scrape_rhmz():
     data = []
     rows = table.find_all('tr')
 
+    vreme_sada = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
     for row in rows[1:]:  # Preskačemo zaglavlje
         cols = row.find_all(['td', 'th'])
         if len(cols) >= 6:
             grad = cols[0].text.strip()
-            temp = parse_number(cols[1].text.strip())
-            pritisak = parse_number(cols[2].text.strip())
-            vlaznost = parse_number(cols[3].text.strip())
-            vetar_raw = cols[4].text.strip()  # npr. "SE 2" ili "C"
 
-            # --- IZVLAČENJE TEKSTUALNOG OPISA VREMENA ---
-            opis_td = cols[5]
+            # 1. OPIS VREMENA je u koloni cols[1] (ikona/pojava)
+            opis_td = cols[1]
             img = opis_td.find('img')
-
-            # Prvo tražimo title ili alt na slici (ikoni), pa u samoj ćeliji
             if img and img.get('title'):
                 opis = img.get('title').strip()
             elif img and img.get('alt'):
@@ -61,12 +57,19 @@ def scrape_rhmz():
             else:
                 opis = opis_td.text.strip()
 
-            # Razdvajanje pravca i brzine vetra
+            # 2. TEMPERATURA je u cols[2]
+            temp = parse_number(cols[2].text.strip())
+
+            # 3. PRITISAK je u cols[3]
+            pritisak = parse_number(cols[3].text.strip())
+
+            # 4. VETAR je u cols[4] (npr. "SE 2" ili "jugoistočni 2")
+            vetar_raw = cols[4].text.strip()
             pravac_vetra = vetar_raw.split()[0] if vetar_raw else None
             brzina_vetra = parse_number(vetar_raw)
 
-            # Podaci se osvežavaju na svakih 20 min (orijentaciono vreme)
-            vreme_sada = datetime.now().isoformat()
+            # 5. VLAŽNOST je u cols[5]
+            vlaznost = parse_number(cols[5].text.strip())
 
             if grad:
                 data.append({
