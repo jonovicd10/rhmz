@@ -37,39 +37,72 @@ def scrape_rhmz():
 
     data = []
     rows = table.find_all('tr')
+    if not rows:
+        return []
+
+    # 1. Pronalaženje tačnih indeksa kolona iz zaglavlja tabele
+    header_cols = [th.text.strip().lower() for th in rows[0].find_all(['th', 'td'])]
+
+    # Podrazumevani indeksi ako zaglavlje ne uspeti da se mapira
+    idx_grad = 0
+    idx_opis = 1
+    idx_temp = 2
+    idx_pritisak = 3
+    idx_vetar = 4
+    idx_vlaznost = 5
+
+    for i, h in enumerate(header_cols):
+        if 'stanica' in h or 'град' in h or 'mesto' in h:
+            idx_grad = i
+        elif 'vreme' in h or 'појаве' in h or 'opis' in h:
+            idx_opis = i
+        elif 'temp' in h or 'т' in h:
+            idx_temp = i
+        elif 'prit' in h or 'притисак' in h:
+            idx_pritisak = i
+        elif 'vetar' in h or 'ветар' in h:
+            idx_vetar = i
+        elif 'vlaga' in h or 'влажност' in h:
+            idx_vlaznost = i
 
     vreme_sada = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    for row in rows[1:]:  # Preskačemo zaglavlje
+    # 2. Parsiranje redova sa dinamičkim indeksima
+    for row in rows[1:]:
         cols = row.find_all(['td', 'th'])
         if len(cols) >= 6:
-            grad = cols[0].text.strip()
+            grad = cols[idx_grad].text.strip() if len(cols) > idx_grad else None
 
-            # 1. OPIS VREMENA je u koloni cols[1] (ikona/pojava)
-            opis_td = cols[1]
-            img = opis_td.find('img')
-            if img and img.get('title'):
-                opis = img.get('title').strip()
-            elif img and img.get('alt'):
-                opis = img.get('alt').strip()
-            elif opis_td.get('title'):
-                opis = opis_td.get('title').strip()
-            else:
-                opis = opis_td.text.strip()
+            # Temperatura
+            temp_text = cols[idx_temp].text.strip() if len(cols) > idx_temp else ''
+            temp = parse_number(temp_text)
 
-            # 2. TEMPERATURA je u cols[2]
-            temp = parse_number(cols[2].text.strip())
+            # Pritisak
+            press_text = cols[idx_pritisak].text.strip() if len(cols) > idx_pritisak else ''
+            pritisak = parse_number(press_text)
 
-            # 3. PRITISAK je u cols[3]
-            pritisak = parse_number(cols[3].text.strip())
+            # Vlažnost
+            hum_text = cols[idx_vlaznost].text.strip() if len(cols) > idx_vlaznost else ''
+            vlaznost = parse_number(hum_text)
 
-            # 4. VETAR je u cols[4] (npr. "SE 2" ili "jugoistočni 2")
-            vetar_raw = cols[4].text.strip()
+            # Vetar
+            vetar_raw = cols[idx_vetar].text.strip() if len(cols) > idx_vetar else ''
             pravac_vetra = vetar_raw.split()[0] if vetar_raw else None
             brzina_vetra = parse_number(vetar_raw)
 
-            # 5. VLAŽNOST je u cols[5]
-            vlaznost = parse_number(cols[5].text.strip())
+            # Opis vremena
+            opis_td = cols[idx_opis] if len(cols) > idx_opis else None
+            opis = ''
+            if opis_td:
+                img = opis_td.find('img')
+                if img and img.get('title'):
+                    opis = img.get('title').strip()
+                elif img and img.get('alt'):
+                    opis = img.get('alt').strip()
+                elif opis_td.get('title'):
+                    opis = opis_td.get('title').strip()
+                else:
+                    opis = opis_td.text.strip()
 
             if grad:
                 data.append({
@@ -84,7 +117,6 @@ def scrape_rhmz():
                 })
 
     return data
-
 
 def main():
     if not SUPABASE_URL or not SUPABASE_KEY:
