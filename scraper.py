@@ -22,6 +22,7 @@ def parse_number(val):
             return None
     return None
 
+
 def scrape_rhmz():
     url = "https://www.hidmet.gov.rs/ciril/osmotreni/index.php"
     headers = {
@@ -51,14 +52,9 @@ def scrape_rhmz():
         if not grad or grad.lower() in ['stanica', 'станција', 'град', 'mesto']:
             continue
 
+        # 1. Izvlačenje opisa ako postoji slika ili tekst
         opis = ""
-        temp = None
-        pritisak = None
-        vlaznost = None
-        pravac_vetra = None
-        brzina_vetra = None
-
-        # 1. Potraga za slikom/opisom u svim ćelijama reda
+        non_data_cols = []
         for col in cols[1:]:
             img = col.find('img')
             if img:
@@ -68,14 +64,32 @@ def scrape_rhmz():
                     opis = os.path.splitext(src_filename)[0].replace('_', ' ').strip()
                 break
 
-        # 2. Parsiranje svih preostalih ćelija po sadržaju
+        # 2. Odvajanje kolona sa podacima od kolone sa opisom
+        data_cols = []
         for col in cols[1:]:
-            txt = col.text.strip()
-            num = parse_number(txt)
+            # Ako je ovo kolona sa slikom opisa, preskačemo je u numeričkoj analizi
+            if col.find('img'):
+                continue
+            data_cols.append(col.text.strip())
 
-            # Ako ćelija sadrži pravac vetra (npr. "NW 2", "W 1", "SE", "mirno")
-            if any(p in txt for p in ['N', 'S', 'E', 'W', 'NW', 'NE', 'SW', 'SE', 'mirno', 'мирно']):
-                parts = txt.split()
+        temp = None
+        pritisak = None
+        pravac_vetra = None
+        brzina_vetra = None
+        vlaznost = None
+
+        # Očekivani redosled numeričkih kolona na RHMZ sajtu:
+        # 0: Temperatura, 1: Pritisak, 2: Vetar, 3: Vlažnost
+
+        # Ako imamo sve 4 kolone sa podacima
+        if len(data_cols) >= 4:
+            temp = parse_number(data_cols[0])
+            pritisak = parse_number(data_cols[1])
+
+            # Vetar (npr. "W 1" ili "NW 2")
+            vetar_raw = data_cols[2]
+            if vetar_raw:
+                parts = vetar_raw.split()
                 if len(parts) >= 2:
                     pravac_vetra = parts[0]
                     brzina_vetra = parse_number(parts[1])
@@ -84,21 +98,30 @@ def scrape_rhmz():
                         brzina_vetra = parse_number(parts[0])
                     else:
                         pravac_vetra = parts[0]
-                continue
+                        brzina_vetra = 0.0
 
-            if num is None:
-                # Ako je ostao tekst koji nije broj, a nemamo opis
-                if txt and not txt.isdigit() and not opis and len(txt) > 3:
-                    opis = txt
-                continue
+            # Vlažnost
+            vlaznost_num = parse_number(data_cols[3])
+            vlaznost = int(vlaznost_num) if vlaznost_num is not None else None
 
-            # Klasifikacija po opsegu vrednosti
-            if num > 800 and num < 1100:
-                pritisak = num
-            elif temp is None and -40 <= num <= 50:
-                temp = num
-            elif '%' in txt or (vlaznost is None and 0 <= num <= 100 and '.' not in txt):
-                vlaznost = int(num)
+        # Fallback ako nedostaje neka od kolona (pametno mapiranje)
+        else:
+            for txt in data_cols:
+                num = parse_number(txt)
+                if any(p in txt for p in ['N', 'S', 'E', 'W', 'NW', 'NE', 'SW', 'SE', 'mirno', 'мирно']):
+                    parts = txt.split()
+                    pravac_vetra = parts[0] if parts else None
+                    if len(parts) > 1:
+                        brzina_vetra = parse_number(parts[1])
+                    continue
+
+                if num is not None:
+                    if num > 800 and num < 1100:
+                        pritisak = num
+                    elif temp is None and -40 <= num <= 50:
+                        temp = num
+                    elif vlaznost is None and '%' in txt:
+                        vlaznost = int(num)
 
         data.append({
             "grad": grad,
@@ -107,7 +130,7 @@ def scrape_rhmz():
             "vlaznost": vlaznost,
             "pravac_vetra": pravac_vetra,
             "brzina_vetra": brzina_vetra,
-            "opis_vremena": opis if opis else "Bez opisa",
+            "opis_vremena": opis if opis else "Pretežno vedro",
             "vreme_osmotreno": vreme_sada
         })
 
