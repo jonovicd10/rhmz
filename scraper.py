@@ -36,10 +36,9 @@ def scrape_rhmz():
     table = soup.find('table')
 
     if not table:
-        print("Tabela nije pronađena na stranici.")
+        print("Tabela nije pronađena na glavnoj RHMZ stranici.")
         return []
 
-    # Mapiranje kolona iz zaglavlja (<th>)
     header_map = {}
     header_row = table.find('tr')
 
@@ -72,7 +71,6 @@ def scrape_rhmz():
         grad_idx = header_map.get('grad', 0)
         grad = cols[grad_idx].text.strip() if len(cols) > grad_idx else ""
 
-        # FILTRIRANJE: Ignorišemo naslove, fusnote i napomene (npr. "(1) Podaci...", "(2)...")
         if not grad or grad.startswith('(') or any(x in grad.lower() for x in
                                                    ['stanica', 'станција', 'град', 'mesto', 'podaci', 'подаци', 'hpa',
                                                     'subjektivni']):
@@ -103,17 +101,12 @@ def scrape_rhmz():
                 return cols[idx].text.strip()
             return ""
 
-        temp_txt = get_col_text('temp')
-        pritisak_txt = get_col_text('pritisak')
-        vetar_txt = get_col_text('vetar')
-        vlaznost_txt = get_col_text('vlaznost')
-
-        temp = parse_number(temp_txt)
-        pritisak = parse_number(pritisak_txt)
-
-        vlaznost_num = parse_number(vlaznost_txt)
+        temp = parse_number(get_col_text('temp'))
+        pritisak = parse_number(get_col_text('pritisak'))
+        vlaznost_num = parse_number(get_col_text('vlaznost'))
         vlaznost = int(vlaznost_num) if vlaznost_num is not None else None
 
+        vetar_txt = get_col_text('vetar')
         pravac_vetra = None
         brzina_vetra = None
         if vetar_txt:
@@ -141,21 +134,79 @@ def scrape_rhmz():
 
     return data
 
+
+def fetch_automatic_stations():
+    url = "https://www.hidmet.gov.rs/latin/osmotreni/automatske.php"
+    headers = {"User-Agent": "Mozilla/5.0"}
+
+    try:
+        response = requests.get(url, headers=headers)
+        response.encoding = 'utf-8'
+        soup = BeautifulSoup(response.text, 'html.parser')
+        table = soup.find('table')
+
+        if not table:
+            print("Tabela nije pronađena na automatske.php.")
+            return []
+
+        data = []
+        rows = table.find_all('tr')
+
+        for row in rows[1:]:
+            cols = [ele.text.strip() for ele in row.find_all(['td', 'th'])]
+            if len(cols) < 6:
+                continue
+
+            stanica = cols[0]
+            if not stanica or stanica.startswith('(') or 'stanica' in stanica.lower():
+                continue
+
+            vreme_txt = cols[1] if len(cols) > 1 else ""
+            temp = parse_number(cols[2]) if len(cols) > 2 else None
+
+            vlaznost_num = parse_number(cols[3]) if len(cols) > 3 else None
+            vlaznost = int(vlaznost_num) if vlaznost_num is not None else None
+
+            pritisak = parse_number(cols[4]) if len(cols) > 4 else None
+            vetar_txt = cols[5] if len(cols) > 5 else ""
+
+            # Slažemo objekte tačno po kolonama tvoje tabele:
+            # stanica, vreme, temperatura, vlaznost, pritisak, vetar
+            data.append({
+                "stanica": stanica,
+                "vreme": vreme_txt,
+                "temperatura": temp,
+                "vlaznost": vlaznost,
+                "pritisak": pritisak,
+                "vetar": vetar_txt
+            })
+
+        return data
+    except Exception as e:
+        print(f"Greška pri skrapovanju automatskih stanica: {e}")
+        return []
+
+
 def main():
     if not SUPABASE_URL or not SUPABASE_KEY:
         print("Greška: Nisu podešene SUPABASE_URL i SUPABASE_KEY promenljive!")
         return
 
-    print("Prikupljanje podataka sa RHMZ...")
-    records = scrape_rhmz()
+    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-    if records:
-        supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-        # Upisivanje u bazu (upsert sprečava greške ako podatak već postoji)
-        response = supabase.table("merenja").upsert(records, on_conflict="grad,vreme_osmotreno").execute()
-        print(f"Uspešno upisano {len(records)} gradova u bazu.")
-    else:
-        print("Nema podataka za upis.")
+    # 1. Glavne stanice
+    print("Prikupljanje glavnih stanica...")
+    records_glavne = scrape_rhmz()
+    if records_glavne:
+        supabase.table("merenja").upsert(records_glavne, on_conflict="grad,vreme_osmotreno").execute()
+        print(f"Uspešno upisano {len(records_glavne)} glavnih stanica u bazu.")
+
+    # 2. Automatske stanice
+    print("Prikupljanje automatskih stanica...")
+    records_automatske = fetch_automatic_stations()
+    if records_automatske:
+        supabase.table("automatske_stanice").insert(records_automatske).execute()
+        print(f"Uspešno upisano {len(records_automatske)} automatskih stanica u bazu.")
 
 
 if __name__ == "__main__":

@@ -3,81 +3,128 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vremenske Prilike - Srbija (Istorija i Trenutno)</title>
-    <!-- Tailwind CSS za brzi i moderan dizajn -->
+    <title>Vremenske Prilike - Srbija</title>
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Supabase JS Klijent -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <!-- Chart.js za prikaz grafikona -->
+    <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body class="bg-gray-100 min-h-screen text-gray-800 p-4 md:p-8">
 
     <div class="max-w-5xl mx-auto space-y-6">
-        <!-- Zaglavlje -->
-        <header class="bg-white p-6 rounded-xl shadow-md flex flex-col sm:flex-row justify-between items-center gap-4">
+        <!-- Zaglavlje sa Navigacijom (Tabovima) -->
+        <header class="bg-white p-6 rounded-xl shadow-md flex flex-col md:flex-row justify-between items-center gap-4">
             <div>
                 <h1 class="text-2xl font-bold text-blue-600">🌤️ RHMZ Vremenski Podaci</h1>
                 <p class="text-sm text-gray-500">Automatsko osvežavanje na svakih 20 minuta</p>
             </div>
-            <!-- Izbor grada -->
-            <div class="w-full sm:w-64">
-                <label for="citySelect" class="block text-xs font-semibold uppercase text-gray-500 mb-1">Izaberi grad:</label>
-                <select id="citySelect" class="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-medium">
-                    <option value="">Učitavanje gradova...</option>
-                </select>
+
+            <!-- Tabovi za navigaciju -->
+            <div class="flex bg-gray-100 p-1 rounded-xl w-full md:w-auto">
+                <button id="btnGlavne" onclick="switchTab('glavne')" class="flex-1 md:flex-initial px-4 py-2 text-sm font-semibold rounded-lg bg-blue-600 text-white shadow transition-all">
+                    Glavne Stanice
+                </button>
+                <button id="btnAutomatske" onclick="switchTab('automatske')" class="flex-1 md:flex-initial px-4 py-2 text-sm font-semibold rounded-lg text-gray-600 hover:text-gray-900 transition-all">
+                    Automatske Stanice
+                </button>
             </div>
         </header>
 
-        <!-- Trenutno stanje za izabrani grad -->
-        <div id="currentCard" class="bg-white p-6 rounded-xl shadow-md hidden">
-            <div class="flex justify-between items-start mb-4 border-b pb-3">
+        <!-- ================= PREDOGLED 1: GLAVNE STANICE ================= -->
+        <div id="viewGlavne" class="space-y-6">
+            <!-- Izbor grada -->
+            <div class="bg-white p-4 rounded-xl shadow-md flex justify-between items-center">
+                <label for="citySelect" class="text-sm font-semibold uppercase text-gray-500">Izaberi grad:</label>
+                <select id="citySelect" class="w-64 p-2.5 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-medium">
+                    <option value="">Učitavanje gradova...</option>
+                </select>
+            </div>
+
+            <!-- Trenutno stanje -->
+            <div id="currentCard" class="bg-white p-6 rounded-xl shadow-md hidden">
+                <div class="flex justify-between items-start mb-4 border-b pb-3">
+                    <div>
+                        <h2 id="cityName" class="text-2xl font-bold text-gray-800">--</h2>
+                        <p id="timeObserved" class="text-xs text-gray-400">--</p>
+                    </div>
+                    <span id="weatherDesc" class="px-3 py-1 bg-blue-100 text-blue-800 text-sm font-semibold rounded-full">--</span>
+                </div>
+
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
+                    <div class="p-3 bg-blue-50 rounded-lg">
+                        <p class="text-xs text-gray-500">Temperatura</p>
+                        <p id="tempVal" class="text-2xl font-bold text-blue-600">-- °C</p>
+                    </div>
+                    <div class="p-3 bg-gray-50 rounded-lg">
+                        <p class="text-xs text-gray-500">Pritisak</p>
+                        <p id="pressVal" class="text-sm font-semibold text-gray-700">-- hPa</p>
+                    </div>
+                    <div class="p-3 bg-gray-50 rounded-lg">
+                        <p class="text-xs text-gray-500">Vlažnost</p>
+                        <p id="humVal" class="text-sm font-semibold text-gray-700">-- %</p>
+                    </div>
+                    <div class="p-3 bg-gray-50 rounded-lg">
+                        <p class="text-xs text-gray-500">Vetar</p>
+                        <p id="windVal" class="text-sm font-semibold text-gray-700">--</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Grafikon -->
+            <div class="bg-white p-6 rounded-xl shadow-md">
+                <h3 class="text-lg font-bold mb-4 text-gray-700">Istorija temperature za izabrani grad</h3>
+                <div class="relative h-72 w-full">
+                    <canvas id="tempChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= PREDOGLED 2: AUTOMATSKE STANICE ================= -->
+        <div id="viewAutomatske" class="bg-white p-6 rounded-xl shadow-md hidden space-y-4">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b pb-4">
                 <div>
-                    <h2 id="cityName" class="text-2xl font-bold text-gray-800">--</h2>
-                    <p id="timeObserved" class="text-xs text-gray-400">--</p>
+                    <h2 class="text-xl font-bold text-gray-800">⚡ Automatska Merenja Stanica</h2>
+                    <p class="text-xs text-gray-500">Podaci osmotreni direktno sa automatskih stanica RHMZ-a</p>
                 </div>
-                <span id="weatherDesc" class="px-3 py-1 bg-blue-100 text-blue-800 text-sm font-semibold rounded-full">--</span>
+                <input type="text" id="autoSearch" onkeyup="filterAutoTable()" placeholder="Pretraži stanicu..." class="p-2 border border-gray-300 rounded-lg text-sm w-full sm:w-64 focus:ring-2 focus:ring-blue-500 outline-none">
             </div>
 
-            <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
-                <div class="p-3 bg-blue-50 rounded-lg">
-                    <p class="text-xs text-gray-500">Temperatura</p>
-                    <p id="tempVal" class="text-2xl font-bold text-blue-600">-- °C</p>
-                </div>
-                <div class="p-3 bg-gray-50 rounded-lg">
-                    <p class="text-xs text-gray-500">Pritisak</p>
-                    <p id="pressVal" class="text-sm font-semibold text-gray-700">-- hPa</p>
-                </div>
-                <div class="p-3 bg-gray-50 rounded-lg">
-                    <p class="text-xs text-gray-500">Vlažnost</p>
-                    <p id="humVal" class="text-sm font-semibold text-gray-700">-- %</p>
-                </div>
-                <div class="p-3 bg-gray-50 rounded-lg">
-                    <p class="text-xs text-gray-500">Vetar</p>
-                    <p id="windVal" class="text-sm font-semibold text-gray-700">--</p>
-                </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                            <th class="p-3">Stanica</th>
+                            <th class="p-3">Vreme</th>
+                            <th class="p-3">Temp (°C)</th>
+                            <th class="p-3">Vlažnost (%)</th>
+                            <th class="p-3">Pritisak (hPa)</th>
+                            <th class="p-3">Vetar</th>
+                        </tr>
+                    </thead>
+                    <tbody id="autoTableBody" class="divide-y divide-gray-200 text-sm">
+                        <tr>
+                            <td colspan="6" class="p-4 text-center text-gray-400">Učitavanje podataka...</td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
         </div>
 
-        <!-- Grafikon istorije -->
-        <div class="bg-white p-6 rounded-xl shadow-md">
-            <h3 class="text-lg font-bold mb-4 text-gray-700">Istorija temperature za izabrani grad</h3>
-            <div class="relative h-72 w-full">
-                <canvas id="tempChart"></canvas>
-            </div>
-        </div>
     </div>
 
     <script>
-        // === Tvoji Supabase Kredencijali ===
+        // Supabase Kredencijali
         const SUPABASE_URL = "https://gadeilbhhastxyoktped.supabase.co";
         const SUPABASE_ANON_KEY = "sb_publishable_p2OWcDZ5x2KknG1mwSGPmg_7ie3HmJS";
 
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         let chartInstance = null;
+        let automaticDataCache = [];
 
-        // Inicijalizacija pri učitavanju
+        // Inicijalizacija
         window.addEventListener('DOMContentLoaded', async () => {
             await loadCities();
 
@@ -88,7 +135,34 @@
             });
         });
 
-        // 1. Učitavanje liste gradova iz baze
+        // Prebacivanje tabova
+        function switchTab(tab) {
+            const btnGlavne = document.getElementById('btnGlavne');
+            const btnAutomatske = document.getElementById('btnAutomatske');
+            const viewGlavne = document.getElementById('viewGlavne');
+            const viewAutomatske = document.getElementById('viewAutomatske');
+
+            if (tab === 'glavne') {
+                viewGlavne.classList.remove('hidden');
+                viewAutomatske.classList.add('hidden');
+
+                btnGlavne.className = "flex-1 md:flex-initial px-4 py-2 text-sm font-semibold rounded-lg bg-blue-600 text-white shadow transition-all";
+                btnAutomatske.className = "flex-1 md:flex-initial px-4 py-2 text-sm font-semibold rounded-lg text-gray-600 hover:text-gray-900 transition-all";
+            } else {
+                viewGlavne.classList.add('hidden');
+                viewAutomatske.classList.remove('hidden');
+
+                btnAutomatske.className = "flex-1 md:flex-initial px-4 py-2 text-sm font-semibold rounded-lg bg-blue-600 text-white shadow transition-all";
+                btnGlavne.className = "flex-1 md:flex-initial px-4 py-2 text-sm font-semibold rounded-lg text-gray-600 hover:text-gray-900 transition-all";
+
+                // Učitaj automatske stanice ako već nisu učitane
+                if (automaticDataCache.length === 0) {
+                    loadAutomaticStations();
+                }
+            }
+        }
+
+        // 1. Učitavanje liste gradova za Glavne stanice
         async function loadCities() {
             const { data, error } = await supabaseClient
                 .from('merenja')
@@ -100,7 +174,6 @@
                 return;
             }
 
-            // Unikatni gradovi
             const uniqueCities = [...new Set(data.map(item => item.grad))];
             const select = document.getElementById('citySelect');
             select.innerHTML = '';
@@ -112,14 +185,13 @@
                 select.appendChild(opt);
             });
 
-            // Podrazumevano izaberi Zaječar
             if (uniqueCities.length > 0) {
                 select.value = uniqueCities.includes('Зајечар') ? 'Зајечар' : (uniqueCities.includes('Zaječar') ? 'Zaječar' : uniqueCities[0]);
                 loadCityData(select.value);
             }
-        } // <--- OVA ZAGRADA JE NEDOSTAJALA!
+        }
 
-        // 2. Učitavanje trenutnog stanja i istorije za izabrani grad
+        // 2. Učitavanje podataka za izabrani grad
         async function loadCityData(grad) {
             const { data, error } = await supabaseClient
                 .from('merenja')
@@ -130,12 +202,10 @@
 
             if (error || !data || data.length === 0) return;
 
-            // Prikaz trenutnog (poslednjeg) stanja
             const latest = data[data.length - 1];
             document.getElementById('currentCard').classList.remove('hidden');
             document.getElementById('cityName').textContent = latest.grad;
 
-            // Formatiranje vremena za prikaz na kartici
             const formatiranoVreme = new Date(latest.vreme_osmotreno).toLocaleString('sr-RS');
             document.getElementById('timeObserved').textContent = "Poslednje osmotreno: " + formatiranoVreme;
 
@@ -150,7 +220,6 @@
             }
             document.getElementById('windVal').textContent = vetarText;
 
-            // Prikaz grafikona
             renderChart(data);
         }
 
@@ -162,7 +231,6 @@
             });
 
             const temps = historyData.map(d => d.temperatura);
-
             const ctx = document.getElementById('tempChart').getContext('2d');
 
             if (chartInstance) {
@@ -186,18 +254,70 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: {
-                        legend: { display: false }
-                    },
+                    plugins: { legend: { display: false } },
                     scales: {
-                        y: {
-                            ticks: {
-                                callback: function(value) { return value + '°C'; }
-                            }
-                        }
+                        y: { ticks: { callback: function(value) { return value + '°C'; } } }
                     }
                 }
             });
+        }
+
+        // 4. Učitavanje Automatskih Stanica
+        async function loadAutomaticStations() {
+            const { data, error } = await supabaseClient
+                .from('automatske_stanice')
+                .select('*')
+                .order('created_at', { ascending: false });
+
+            if (error) {
+                console.error("Greška pri učitavanju automatskih stanica:", error);
+                return;
+            }
+
+            // Filtriramo samo najnoviji zapis za svaku unikatnu stanicu
+            const uniqueMap = new Map();
+            data.forEach(item => {
+                if (!uniqueMap.has(item.stanica)) {
+                    uniqueMap.set(item.stanica, item);
+                }
+            });
+
+            automaticDataCache = Array.from(uniqueMap.values());
+            renderAutoTable(automaticDataCache);
+        }
+
+        // Renderovanje tabele automatskih stanica
+        function renderAutoTable(items) {
+            const tbody = document.getElementById('autoTableBody');
+            tbody.innerHTML = '';
+
+            if (items.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="p-4 text-center text-gray-500">Nema pronađenih stanica.</td></tr>';
+                return;
+            }
+
+            items.forEach(item => {
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-gray-50 transition-colors";
+                tr.innerHTML = `
+                    <td class="p-3 font-semibold text-gray-800">${item.stanica}</td>
+                    <td class="p-3 text-gray-500 text-xs">${item.vreme || '--'}</td>
+                    <td class="p-3 font-bold ${item.temperatura > 0 ? 'text-red-500' : 'text-blue-500'}">${item.temperatura !== null ? item.temperatura + ' °C' : '--'}</td>
+                    <td class="p-3 text-gray-600">${item.vlaznost !== null ? item.vlaznost + ' %' : '--'}</td>
+                    <td class="p-3 text-gray-600">${item.pritisak !== null ? item.pritisak + ' hPa' : '--'}</td>
+                    <td class="p-3 text-gray-600">${item.vetar || '--'}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // Pretraga u tabeli automatskih stanica
+        function filterAutoTable() {
+            const query = document.getElementById('autoSearch').value.toLowerCase();
+            const filtered = automaticDataCache.filter(item =>
+                item.stanica.toLowerCase().includes(query)
+            );
+            renderAutoTable(filtered);
         }
     </script>
 </body>
