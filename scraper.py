@@ -137,7 +137,7 @@ def scrape_rhmz():
 
 def fetch_automatic_stations():
     url = "https://www.hidmet.gov.rs/latin/osmotreni/automatske.php"
-    headers = {"User-Agent": "Mozilla/5.0"}
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
 
     try:
         response = requests.get(url, headers=headers)
@@ -149,29 +149,55 @@ def fetch_automatic_stations():
             print("Tabela nije pronađena na automatske.php.")
             return []
 
+        # Detekcija zaglavlja za automatske stanice
+        header_map = {}
+        header_row = table.find('tr')
+        if header_row:
+            headers_list = header_row.find_all(['th', 'td'])
+            for idx, h in enumerate(headers_list):
+                txt = h.text.strip().lower()
+                if 'stanica' in txt or 'станица' in txt:
+                    header_map['stanica'] = idx
+                elif 'vreme' in txt or 'врем' in txt or 'datum' in txt:
+                    header_map['vreme'] = idx
+                elif 'temp' in txt or 'темп' in txt:
+                    header_map['temp'] = idx
+                elif 'vlaz' in txt or 'влаж' in txt:
+                    header_map['vlaznost'] = idx
+                elif 'pritis' in txt or 'притис' in txt:
+                    header_map['pritisak'] = idx
+                elif 'vetar' in txt or 'ветар' in txt or 'вет' in txt:
+                    header_map['vetar'] = idx
+
+        # Podrazumevani indeksi ako mapiranje po tekstu ne uspe
+        idx_stanica = header_map.get('stanica', 0)
+        idx_vreme = header_map.get('vreme', 1)
+        idx_temp = header_map.get('temp', 2)
+        idx_vlaznost = header_map.get('vlaznost', 3)
+        idx_pritisak = header_map.get('pritisak', 4)
+        idx_vetar = header_map.get('vetar', 5)
+
         data = []
-        rows = table.find_all('tr')
+        rows = table.find_all('tr')[1:]
 
-        for row in rows[1:]:
+        for row in rows:
             cols = [ele.text.strip() for ele in row.find_all(['td', 'th'])]
-            if len(cols) < 6:
+            if len(cols) < 4:
                 continue
 
-            stanica = cols[0]
-            if not stanica or stanica.startswith('(') or 'stanica' in stanica.lower():
+            stanica = cols[idx_stanica] if len(cols) > idx_stanica else ""
+            if not stanica or stanica.startswith('(') or any(x in stanica.lower() for x in ['stanica', 'станица', 'mesto']):
                 continue
 
-            vreme_txt = cols[1] if len(cols) > 1 else ""
-            temp = parse_number(cols[2]) if len(cols) > 2 else None
+            vreme_txt = cols[idx_vreme] if len(cols) > idx_vreme else ""
+            temp = parse_number(cols[idx_temp]) if len(cols) > idx_temp else None
 
-            vlaznost_num = parse_number(cols[3]) if len(cols) > 3 else None
+            vlaznost_num = parse_number(cols[idx_vlaznost]) if len(cols) > idx_vlaznost else None
             vlaznost = int(vlaznost_num) if vlaznost_num is not None else None
 
-            pritisak = parse_number(cols[4]) if len(cols) > 4 else None
-            vetar_txt = cols[5] if len(cols) > 5 else ""
+            pritisak = parse_number(cols[idx_pritisak]) if len(cols) > idx_pritisak else None
+            vetar_txt = cols[idx_vetar] if len(cols) > idx_vetar else ""
 
-            # Slažemo objekte tačno po kolonama tvoje tabele:
-            # stanica, vreme, temperatura, vlaznost, pritisak, vetar
             data.append({
                 "stanica": stanica,
                 "vreme": vreme_txt,
