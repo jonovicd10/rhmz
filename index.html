@@ -312,9 +312,9 @@
 
         function renderAutoChart(historyData) {
             const labels = historyData.map(d => {
+                if (d.vreme) return d.vreme;
                 const date = new Date(d.created_at);
-                return date.toLocaleDateString('sr-RS', { day: '2-digit', month: '2-digit' }) + ' ' +
-                       date.toLocaleTimeString('sr-RS', { hour: '2-digit', minute: '2-digit' });
+                return date.toLocaleTimeString('sr-RS', { hour: '2-digit', minute: '2-digit' }) + 'h';
             });
 
             const temps = historyData.map(d => d.temperatura);
@@ -452,7 +452,7 @@
         function renderChart(historyData) {
             const labels = historyData.map(d => {
                 const date = new Date(d.vreme_osmotreno);
-                return date.toLocaleDateString('sr-RS', { hour: '2-digit', minute: '2-digit' }) + 'h';
+                return date.toLocaleTimeString('sr-RS', { hour: '2-digit', minute: '2-digit' }) + 'h';
             });
 
             const temps = historyData.map(d => d.temperatura);
