@@ -34,12 +34,30 @@
 
         <!-- ================= PREDOGLED 1: GLAVNE STANICE ================= -->
         <div id="viewGlavne" class="space-y-6 hidden">
-            <!-- Izbor grada -->
-            <div class="bg-white p-4 rounded-xl shadow-md flex justify-between items-center">
-                <label for="citySelect" class="text-sm font-semibold uppercase text-gray-500">Izaberi grad:</label>
-                <select id="citySelect" class="w-64 p-2.5 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-medium">
-                    <option value="">Učitavanje gradova...</option>
-                </select>
+            <!-- Izbor grada i Vremenski Filter -->
+            <div class="bg-white p-4 rounded-xl shadow-md flex flex-col md:flex-row gap-4 justify-between items-end md:items-center">
+                <div class="w-full md:w-auto">
+                    <label for="citySelect" class="block text-xs font-semibold uppercase text-gray-500 mb-1">Izaberi grad:</label>
+                    <select id="citySelect" class="w-full md:w-56 p-2 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-medium text-sm">
+                        <option value="">Učitavanje gradova...</option>
+                    </select>
+                </div>
+
+                <!-- Filter Od / Do -->
+                <div class="flex flex-wrap items-center gap-3 w-full md:w-auto">
+                    <div>
+                        <label for="mainFrom" class="block text-xs font-semibold uppercase text-gray-500 mb-1">Od:</label>
+                        <input type="datetime-local" id="mainFrom" class="p-1.5 bg-gray-50 border border-gray-300 rounded-lg text-xs">
+                    </div>
+                    <div>
+                        <label for="mainTo" class="block text-xs font-semibold uppercase text-gray-500 mb-1">Do:</label>
+                        <input type="datetime-local" id="mainTo" class="p-1.5 bg-gray-50 border border-gray-300 rounded-lg text-xs">
+                    </div>
+                    <div class="flex items-end gap-2 mt-4 md:mt-0">
+                        <button onclick="applyMainFilter()" class="px-3 py-1.5 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition-all">Filtriraj</button>
+                        <button onclick="resetMainFilter()" class="px-3 py-1.5 bg-gray-200 text-gray-700 text-xs font-semibold rounded-lg hover:bg-gray-300 transition-all">Poništi</button>
+                    </div>
+                </div>
             </div>
 
             <!-- Trenutno stanje -->
@@ -83,12 +101,30 @@
 
         <!-- ================= PREDOGLED 2: AUTOMATSKE STANICE (DEFAULT) ================= -->
         <div id="viewAutomatske" class="space-y-6">
-            <!-- Izbor automatske stanice -->
-            <div class="bg-white p-4 rounded-xl shadow-md flex justify-between items-center">
-                <label for="autoSelect" class="text-sm font-semibold uppercase text-gray-500">Izaberi stanicu:</label>
-                <select id="autoSelect" class="w-64 p-2.5 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-medium">
-                    <option value="">Učitavanje stanica...</option>
-                </select>
+            <!-- Izbor automatske stanice i Vremenski Filter -->
+            <div class="bg-white p-4 rounded-xl shadow-md flex flex-col md:flex-row gap-4 justify-between items-end md:items-center">
+                <div class="w-full md:w-auto">
+                    <label for="autoSelect" class="block text-xs font-semibold uppercase text-gray-500 mb-1">Izaberi stanicu:</label>
+                    <select id="autoSelect" class="w-full md:w-56 p-2 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-medium text-sm">
+                        <option value="">Učitavanje stanica...</option>
+                    </select>
+                </div>
+
+                <!-- Filter Od / Do -->
+                <div class="flex flex-wrap items-center gap-3 w-full md:w-auto">
+                    <div>
+                        <label for="autoFrom" class="block text-xs font-semibold uppercase text-gray-500 mb-1">Od:</label>
+                        <input type="datetime-local" id="autoFrom" class="p-1.5 bg-gray-50 border border-gray-300 rounded-lg text-xs">
+                    </div>
+                    <div>
+                        <label for="autoTo" class="block text-xs font-semibold uppercase text-gray-500 mb-1">Do:</label>
+                        <input type="datetime-local" id="autoTo" class="p-1.5 bg-gray-50 border border-gray-300 rounded-lg text-xs">
+                    </div>
+                    <div class="flex items-end gap-2 mt-4 md:mt-0">
+                        <button onclick="applyAutoFilter()" class="px-3 py-1.5 bg-emerald-600 text-white text-xs font-semibold rounded-lg hover:bg-emerald-700 transition-all">Filtriraj</button>
+                        <button onclick="resetAutoFilter()" class="px-3 py-1.5 bg-gray-200 text-gray-700 text-xs font-semibold rounded-lg hover:bg-gray-300 transition-all">Poništi</button>
+                    </div>
+                </div>
             </div>
 
             <!-- Trenutno stanje za automatske stanice -->
@@ -189,7 +225,6 @@
 
         // ================= AUTOMATSKE STANICE =================
 
-        // 1. Učitavanje liste automatskih stanica (sa Zaječarom kao defaultom)
         async function loadAutoStationsList() {
             const { data, error } = await supabaseClient
                 .from('automatske_stanice')
@@ -213,7 +248,6 @@
             });
 
             if (uniqueStations.length > 0) {
-                // Postavljanje Zaječara kao default opcije
                 const zajecarOpt = uniqueStations.find(s => s.toLowerCase().includes('zaječar') || s.toLowerCase().includes('зајечар') || s.toLowerCase().includes('zajecar'));
                 const defaultStation = zajecarOpt || uniqueStations[0];
                 select.value = defaultStation;
@@ -221,16 +255,34 @@
             }
         }
 
-        // 2. Učitavanje istorijskih podataka za izabranu automatsku stanicu
         async function loadAutoStationData(stanica) {
-            const { data, error } = await supabaseClient
+            const fromVal = document.getElementById('autoFrom').value;
+            const toVal = document.getElementById('autoTo').value;
+
+            let query = supabaseClient
                 .from('automatske_stanice')
                 .select('*')
-                .eq('stanica', stanica)
-                .order('created_at', { ascending: true })
-                .limit(100);
+                .eq('stanica', stanica);
 
-            if (error || !data || data.length === 0) return;
+            if (fromVal) {
+                query = query.gte('created_at', new Date(fromVal).toISOString());
+            }
+            if (toVal) {
+                query = query.lte('created_at', new Date(toVal).toISOString());
+            }
+
+            query = query.order('created_at', { ascending: true });
+
+            if (!fromVal && !toVal) {
+                query = query.limit(100);
+            }
+
+            const { data, error } = await query;
+
+            if (error || !data || data.length === 0) {
+                if (autoChartInstance) autoChartInstance.destroy();
+                return;
+            }
 
             const latest = data[data.length - 1];
             document.getElementById('currentAutoCard').classList.remove('hidden');
@@ -247,12 +299,22 @@
             renderAutoChart(data);
         }
 
-        // 3. Iscrtavanje grafikona za automatsku stanicu (sa čistim formatiranjem ose)
+        function applyAutoFilter() {
+            const selected = document.getElementById('autoSelect').value;
+            if (selected) loadAutoStationData(selected);
+        }
+
+        function resetAutoFilter() {
+            document.getElementById('autoFrom').value = '';
+            document.getElementById('autoTo').value = '';
+            applyAutoFilter();
+        }
+
         function renderAutoChart(historyData) {
             const labels = historyData.map(d => {
-                if (d.vreme) return d.vreme;
                 const date = new Date(d.created_at);
-                return date.toLocaleTimeString('sr-RS', { hour: '2-digit', minute: '2-digit' }) + 'h';
+                return date.toLocaleDateString('sr-RS', { day: '2-digit', month: '2-digit' }) + ' ' +
+                       date.toLocaleTimeString('sr-RS', { hour: '2-digit', minute: '2-digit' });
             });
 
             const temps = historyData.map(d => d.temperatura);
@@ -273,7 +335,7 @@
                         backgroundColor: 'rgba(5, 150, 105, 0.1)',
                         fill: true,
                         tension: 0.3,
-                        pointRadius: 4,
+                        pointRadius: 3,
                         pointHoverRadius: 6
                     }]
                 },
@@ -284,7 +346,6 @@
                     scales: {
                         y: {
                             ticks: {
-                                // Sređuje ružne decimale (npr. 19.4000000006 u 19.4°C)
                                 callback: function(value) {
                                     return Number(value).toFixed(1) + '°C';
                                 }
@@ -297,7 +358,6 @@
 
         // ================= GLAVNE STANICE =================
 
-        // 1. Učitavanje liste gradova za glavne stanice
         async function loadCities() {
             const { data, error } = await supabaseClient
                 .from('merenja')
@@ -328,16 +388,34 @@
             }
         }
 
-        // 2. Učitavanje podataka za izabrani grad
         async function loadCityData(grad) {
-            const { data, error } = await supabaseClient
+            const fromVal = document.getElementById('mainFrom').value;
+            const toVal = document.getElementById('mainTo').value;
+
+            let query = supabaseClient
                 .from('merenja')
                 .select('*')
-                .eq('grad', grad)
-                .order('vreme_osmotreno', { ascending: true })
-                .limit(100);
+                .eq('grad', grad);
 
-            if (error || !data || data.length === 0) return;
+            if (fromVal) {
+                query = query.gte('vreme_osmotreno', new Date(fromVal).toISOString());
+            }
+            if (toVal) {
+                query = query.lte('vreme_osmotreno', new Date(toVal).toISOString());
+            }
+
+            query = query.order('vreme_osmotreno', { ascending: true });
+
+            if (!fromVal && !toVal) {
+                query = query.limit(100);
+            }
+
+            const { data, error } = await query;
+
+            if (error || !data || data.length === 0) {
+                if (chartInstance) chartInstance.destroy();
+                return;
+            }
 
             const latest = data[data.length - 1];
             document.getElementById('currentCard').classList.remove('hidden');
@@ -360,11 +438,22 @@
             renderChart(data);
         }
 
-        // 3. Iscrtavanje grafikona za glavne stanice
+        function applyMainFilter() {
+            const selected = document.getElementById('citySelect').value;
+            if (selected) loadCityData(selected);
+        }
+
+        function resetMainFilter() {
+            document.getElementById('mainFrom').value = '';
+            document.getElementById('mainTo').value = '';
+            applyMainFilter();
+        }
+
         function renderChart(historyData) {
             const labels = historyData.map(d => {
                 const date = new Date(d.vreme_osmotreno);
-                return date.toLocaleTimeString('sr-RS', { hour: '2-digit', minute: '2-digit' }) + 'h';
+                return date.toLocaleDateString('sr-RS', { day: '2-digit', month: '2-digit' }) + ' ' +
+                       date.toLocaleTimeString('sr-RS', { hour: '2-digit', minute: '2-digit' });
             });
 
             const temps = historyData.map(d => d.temperatura);
@@ -385,7 +474,7 @@
                         backgroundColor: 'rgba(37, 99, 235, 0.1)',
                         fill: true,
                         tension: 0.3,
-                        pointRadius: 4,
+                        pointRadius: 3,
                         pointHoverRadius: 6
                     }]
                 },
