@@ -452,8 +452,7 @@
         function renderChart(historyData) {
             const labels = historyData.map(d => {
                 const date = new Date(d.vreme_osmotreno);
-                return date.toLocaleDateString('sr-RS', { day: '2-digit', month: '2-digit' }) + ' ' +
-                       date.toLocaleTimeString('sr-RS', { hour: '2-digit', minute: '2-digit' });
+                return date.toLocaleDateString('sr-RS', { hour: '2-digit', minute: '2-digit' }) + 'h';
             });
 
             const temps = historyData.map(d => d.temperatura);
