@@ -23,17 +23,17 @@
 
             <!-- Tabovi za navigaciju -->
             <div class="flex bg-gray-100 p-1 rounded-xl w-full md:w-auto">
-                <button id="btnGlavne" onclick="switchTab('glavne')" class="flex-1 md:flex-initial px-4 py-2 text-sm font-semibold rounded-lg bg-blue-600 text-white shadow transition-all">
+                <button id="btnGlavne" onclick="switchTab('glavne')" class="flex-1 md:flex-initial px-4 py-2 text-sm font-semibold rounded-lg text-gray-600 hover:text-gray-900 transition-all">
                     Glavne Stanice
                 </button>
-                <button id="btnAutomatske" onclick="switchTab('automatske')" class="flex-1 md:flex-initial px-4 py-2 text-sm font-semibold rounded-lg text-gray-600 hover:text-gray-900 transition-all">
+                <button id="btnAutomatske" onclick="switchTab('automatske')" class="flex-1 md:flex-initial px-4 py-2 text-sm font-semibold rounded-lg bg-blue-600 text-white shadow transition-all">
                     Automatske Stanice
                 </button>
             </div>
         </header>
 
         <!-- ================= PREDOGLED 1: GLAVNE STANICE ================= -->
-        <div id="viewGlavne" class="space-y-6">
+        <div id="viewGlavne" class="space-y-6 hidden">
             <!-- Izbor grada -->
             <div class="bg-white p-4 rounded-xl shadow-md flex justify-between items-center">
                 <label for="citySelect" class="text-sm font-semibold uppercase text-gray-500">Izaberi grad:</label>
@@ -81,8 +81,8 @@
             </div>
         </div>
 
-        <!-- ================= PREDOGLED 2: AUTOMATSKE STANICE ================= -->
-        <div id="viewAutomatske" class="space-y-6 hidden">
+        <!-- ================= PREDOGLED 2: AUTOMATSKE STANICE (DEFAULT) ================= -->
+        <div id="viewAutomatske" class="space-y-6">
             <!-- Izbor automatske stanice -->
             <div class="bg-white p-4 rounded-xl shadow-md flex justify-between items-center">
                 <label for="autoSelect" class="text-sm font-semibold uppercase text-gray-500">Izaberi stanicu:</label>
@@ -141,21 +141,21 @@
 
         let chartInstance = null;
         let autoChartInstance = null;
-        let isAutoLoaded = false;
+        let isGlavneLoaded = false;
 
-        // Inicijalizacija
+        // Inicijalizacija - podrazumevano otvaramo AUTOMATSKE STANICE
         window.addEventListener('DOMContentLoaded', async () => {
-            await loadCities();
-
-            document.getElementById('citySelect').addEventListener('change', (e) => {
-                if (e.target.value) {
-                    loadCityData(e.target.value);
-                }
-            });
+            await loadAutoStationsList();
 
             document.getElementById('autoSelect').addEventListener('change', (e) => {
                 if (e.target.value) {
                     loadAutoStationData(e.target.value);
+                }
+            });
+
+            document.getElementById('citySelect').addEventListener('change', (e) => {
+                if (e.target.value) {
+                    loadCityData(e.target.value);
                 }
             });
         });
@@ -173,24 +173,131 @@
 
                 btnGlavne.className = "flex-1 md:flex-initial px-4 py-2 text-sm font-semibold rounded-lg bg-blue-600 text-white shadow transition-all";
                 btnAutomatske.className = "flex-1 md:flex-initial px-4 py-2 text-sm font-semibold rounded-lg text-gray-600 hover:text-gray-900 transition-all";
+
+                if (!isGlavneLoaded) {
+                    loadCities();
+                    isGlavneLoaded = true;
+                }
             } else {
                 viewGlavne.classList.add('hidden');
                 viewAutomatske.classList.remove('hidden');
 
                 btnAutomatske.className = "flex-1 md:flex-initial px-4 py-2 text-sm font-semibold rounded-lg bg-blue-600 text-white shadow transition-all";
                 btnGlavne.className = "flex-1 md:flex-initial px-4 py-2 text-sm font-semibold rounded-lg text-gray-600 hover:text-gray-900 transition-all";
-
-                // Učitaj automatske stanice ako već nisu učitane
-                if (!isAutoLoaded) {
-                    loadAutoStationsList();
-                    isAutoLoaded = true;
-                }
             }
+        }
+
+        // ================= AUTOMATSKE STANICE =================
+
+        // 1. Učitavanje liste automatskih stanica (sa Zaječarom kao defaultom)
+        async function loadAutoStationsList() {
+            const { data, error } = await supabaseClient
+                .from('automatske_stanice')
+                .select('stanica')
+                .order('stanica', { ascending: true });
+
+            if (error) {
+                console.error("Greška pri učitavanju automatskih stanica:", error);
+                return;
+            }
+
+            const uniqueStations = [...new Set(data.map(item => item.stanica))];
+            const select = document.getElementById('autoSelect');
+            select.innerHTML = '';
+
+            uniqueStations.forEach(stanica => {
+                const opt = document.createElement('option');
+                opt.value = stanica;
+                opt.textContent = stanica;
+                select.appendChild(opt);
+            });
+
+            if (uniqueStations.length > 0) {
+                // Postavljanje Zaječara kao default opcije
+                const zajecarOpt = uniqueStations.find(s => s.toLowerCase().includes('zaječar') || s.toLowerCase().includes('зајечар') || s.toLowerCase().includes('zajecar'));
+                const defaultStation = zajecarOpt || uniqueStations[0];
+                select.value = defaultStation;
+                loadAutoStationData(defaultStation);
+            }
+        }
+
+        // 2. Učitavanje istorijskih podataka za izabranu automatsku stanicu
+        async function loadAutoStationData(stanica) {
+            const { data, error } = await supabaseClient
+                .from('automatske_stanice')
+                .select('*')
+                .eq('stanica', stanica)
+                .order('created_at', { ascending: true })
+                .limit(100);
+
+            if (error || !data || data.length === 0) return;
+
+            const latest = data[data.length - 1];
+            document.getElementById('currentAutoCard').classList.remove('hidden');
+            document.getElementById('autoStationName').textContent = latest.stanica;
+
+            const vremeTekst = latest.vreme ? latest.vreme : new Date(latest.created_at).toLocaleTimeString('sr-RS', { hour: '2-digit', minute: '2-digit' });
+            document.getElementById('autoTimeObserved').textContent = "Poslednji osmotreni sat: " + vremeTekst;
+
+            document.getElementById('autoTempVal').textContent = (latest.temperatura !== null ? latest.temperatura : '--') + ' °C';
+            document.getElementById('autoPressVal').textContent = (latest.pritisak !== null ? latest.pritisak : '--') + ' hPa';
+            document.getElementById('autoHumVal').textContent = (latest.vlaznost !== null ? latest.vlaznost : '--') + ' %';
+            document.getElementById('autoWindVal').textContent = latest.vetar || '--';
+
+            renderAutoChart(data);
+        }
+
+        // 3. Iscrtavanje grafikona za automatsku stanicu (sa čistim formatiranjem ose)
+        function renderAutoChart(historyData) {
+            const labels = historyData.map(d => {
+                if (d.vreme) return d.vreme;
+                const date = new Date(d.created_at);
+                return date.toLocaleTimeString('sr-RS', { hour: '2-digit', minute: '2-digit' }) + 'h';
+            });
+
+            const temps = historyData.map(d => d.temperatura);
+            const ctx = document.getElementById('autoTempChart').getContext('2d');
+
+            if (autoChartInstance) {
+                autoChartInstance.destroy();
+            }
+
+            autoChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Temperatura (°C)',
+                        data: temps,
+                        borderColor: '#059669',
+                        backgroundColor: 'rgba(5, 150, 105, 0.1)',
+                        fill: true,
+                        tension: 0.3,
+                        pointRadius: 4,
+                        pointHoverRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: {
+                            ticks: {
+                                // Sređuje ružne decimale (npr. 19.4000000006 u 19.4°C)
+                                callback: function(value) {
+                                    return Number(value).toFixed(1) + '°C';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
         }
 
         // ================= GLAVNE STANICE =================
 
-        // 1. Učitavanje liste gradova
+        // 1. Učitavanje liste gradova za glavne stanice
         async function loadCities() {
             const { data, error } = await supabaseClient
                 .from('merenja')
@@ -214,8 +321,10 @@
             });
 
             if (uniqueCities.length > 0) {
-                select.value = uniqueCities.includes('Зајечар') ? 'Зајечар' : (uniqueCities.includes('Zaječar') ? 'Zaječar' : uniqueCities[0]);
-                loadCityData(select.value);
+                const zajecarOpt = uniqueCities.find(c => c.toLowerCase().includes('zaječar') || c.toLowerCase().includes('зајечар') || c.toLowerCase().includes('zajecar'));
+                const defaultCity = zajecarOpt || uniqueCities[0];
+                select.value = defaultCity;
+                loadCityData(defaultCity);
             }
         }
 
@@ -276,7 +385,8 @@
                         backgroundColor: 'rgba(37, 99, 235, 0.1)',
                         fill: true,
                         tension: 0.3,
-                        pointRadius: 3
+                        pointRadius: 4,
+                        pointHoverRadius: 6
                     }]
                 },
                 options: {
@@ -284,105 +394,13 @@
                     maintainAspectRatio: false,
                     plugins: { legend: { display: false } },
                     scales: {
-                        y: { ticks: { callback: function(value) { return value + '°C'; } } }
-                    }
-                }
-            });
-        }
-
-        // ================= AUTOMATSKE STANICE =================
-
-        // 1. Učitavanje liste automatskih stanica
-        async function loadAutoStationsList() {
-            const { data, error } = await supabaseClient
-                .from('automatske_stanice')
-                .select('stanica')
-                .order('stanica', { ascending: true });
-
-            if (error) {
-                console.error("Greška pri učitavanju automatskih stanica:", error);
-                return;
-            }
-
-            const uniqueStations = [...new Set(data.map(item => item.stanica))];
-            const select = document.getElementById('autoSelect');
-            select.innerHTML = '';
-
-            uniqueStations.forEach(stanica => {
-                const opt = document.createElement('option');
-                opt.value = stanica;
-                opt.textContent = stanica;
-                select.appendChild(opt);
-            });
-
-            if (uniqueStations.length > 0) {
-                select.value = uniqueStations[0];
-                loadAutoStationData(uniqueStations[0]);
-            }
-        }
-
-        // 2. Učitavanje istorijskih podataka za izabranu automatsku stanicu
-        async function loadAutoStationData(stanica) {
-            const { data, error } = await supabaseClient
-                .from('automatske_stanice')
-                .select('*')
-                .eq('stanica', stanica)
-                .order('created_at', { ascending: true })
-                .limit(100);
-
-            if (error || !data || data.length === 0) return;
-
-            const latest = data[data.length - 1];
-            document.getElementById('currentAutoCard').classList.remove('hidden');
-            document.getElementById('autoStationName').textContent = latest.stanica;
-
-            // Prikaz sata iz baze ili kreiranja zapisa
-            const vremeTekst = latest.vreme ? latest.vreme : new Date(latest.created_at).toLocaleTimeString('sr-RS', { hour: '2-digit', minute: '2-digit' });
-            document.getElementById('autoTimeObserved').textContent = "Poslednji osmotreni sat: " + vremeTekst;
-
-            document.getElementById('autoTempVal').textContent = (latest.temperatura !== null ? latest.temperatura : '--') + ' °C';
-            document.getElementById('autoPressVal').textContent = (latest.pritisak !== null ? latest.pritisak : '--') + ' hPa';
-            document.getElementById('autoHumVal').textContent = (latest.vlaznost !== null ? latest.vlaznost : '--') + ' %';
-            document.getElementById('autoWindVal').textContent = latest.vetar || '--';
-
-            renderAutoChart(data);
-        }
-
-        // 3. Iscrtavanje grafikona za automatsku stanicu
-        function renderAutoChart(historyData) {
-            const labels = historyData.map(d => {
-                if (d.vreme) return d.vreme;
-                const date = new Date(d.created_at);
-                return date.toLocaleTimeString('sr-RS', { hour: '2-digit', minute: '2-digit' }) + 'h';
-            });
-
-            const temps = historyData.map(d => d.temperatura);
-            const ctx = document.getElementById('autoTempChart').getContext('2d');
-
-            if (autoChartInstance) {
-                autoChartInstance.destroy();
-            }
-
-            autoChartInstance = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: 'Temperatura (°C)',
-                        data: temps,
-                        borderColor: '#059669', // Zelena nijansa za automatske stanice
-                        backgroundColor: 'rgba(5, 150, 105, 0.1)',
-                        fill: true,
-                        tension: 0.3,
-                        pointRadius: 3
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
-                    scales: {
-                        y: { ticks: { callback: function(value) { return value + '°C'; } } }
+                        y: {
+                            ticks: {
+                                callback: function(value) {
+                                    return Number(value).toFixed(1) + '°C';
+                                }
+                            }
+                        }
                     }
                 }
             });
