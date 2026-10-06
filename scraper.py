@@ -149,62 +149,52 @@ def fetch_automatic_stations():
             print("Tabela nije pronađena na automatske.php.")
             return []
 
-        # Detekcija zaglavlja za automatske stanice
-        header_map = {}
-        header_row = table.find('tr')
-        if header_row:
-            headers_list = header_row.find_all(['th', 'td'])
-            for idx, h in enumerate(headers_list):
-                txt = h.text.strip().lower()
-                if 'stanica' in txt or 'станица' in txt:
-                    header_map['stanica'] = idx
-                elif 'vreme' in txt or 'врем' in txt or 'datum' in txt:
-                    header_map['vreme'] = idx
-                elif 'temp' in txt or 'темп' in txt:
-                    header_map['temp'] = idx
-                elif 'vlaz' in txt or 'влаж' in txt:
-                    header_map['vlaznost'] = idx
-                elif 'pritis' in txt or 'притис' in txt:
-                    header_map['pritisak'] = idx
-                elif 'vetar' in txt or 'ветар' in txt or 'вет' in txt:
-                    header_map['vetar'] = idx
-
-        # Podrazumevani indeksi ako mapiranje po tekstu ne uspe
-        idx_stanica = header_map.get('stanica', 0)
-        idx_vreme = header_map.get('vreme', 1)
-        idx_temp = header_map.get('temp', 2)
-        idx_vlaznost = header_map.get('vlaznost', 3)
-        idx_pritisak = header_map.get('pritisak', 4)
-        idx_vetar = header_map.get('vetar', 5)
+        vreme_sada = datetime.now().strftime("%H:%M")  # Trenutno vrijeme skrapovanja pošto kolona u tabeli ne postoji
 
         data = []
-        rows = table.find_all('tr')[1:]
+        rows = table.find_all('tr')
 
         for row in rows:
             cols = [ele.text.strip() for ele in row.find_all(['td', 'th'])]
-            if len(cols) < 4:
+
+            # Potrebno je najmanje 6 kolona (Stanica, Temp, Prit, Vlažnost, Vetar pravac, Vetar brzina)
+            if len(cols) < 6:
                 continue
 
-            stanica = cols[idx_stanica] if len(cols) > idx_stanica else ""
-            if not stanica or stanica.startswith('(') or any(x in stanica.lower() for x in ['stanica', 'станица', 'mesto']):
+            stanica = cols[0]
+
+            # Preskačemo zaglavlja i prazne redove
+            if not stanica or stanica.startswith('(') or any(
+                    x in stanica.lower() for x in ['stanica', 'станица', 'mesto', 'temp']):
                 continue
 
-            vreme_txt = cols[idx_vreme] if len(cols) > idx_vreme else ""
-            temp = parse_number(cols[idx_temp]) if len(cols) > idx_temp else None
+            # Tačno mapiranje po kolonama sa slike:
+            # cols[0] -> Stanica
+            # cols[1] -> Temp (°C)
+            # cols[2] -> Prit (hPa)
+            # cols[3] -> Vlažnost (%)
+            # cols[4] -> Vetar pravac
+            # cols[5] -> Vetar brzina
 
-            vlaznost_num = parse_number(cols[idx_vlaznost]) if len(cols) > idx_vlaznost else None
+            temp = parse_number(cols[1])
+            pritisak = parse_number(cols[2])
+
+            vlaznost_num = parse_number(cols[3])
             vlaznost = int(vlaznost_num) if vlaznost_num is not None else None
 
-            pritisak = parse_number(cols[idx_pritisak]) if len(cols) > idx_pritisak else None
-            vetar_txt = cols[idx_vetar] if len(cols) > idx_vetar else ""
+            pravac_vetra = cols[4]
+            brzina_vetra = cols[5]
+
+            # Spajamo pravac i brzinu vetra u jedan čitljiv string (npr. "SSW 0.6 m/s")
+            vetar_full = f"{pravac_vetra} {brzina_vetra}".strip() if pravac_vetra or brzina_vetra else "--"
 
             data.append({
                 "stanica": stanica,
-                "vreme": vreme_txt,
+                "vreme": vreme_sada,  # Upisujemo trenutno vreme skrapovanja (npr. 14:20)
                 "temperatura": temp,
                 "vlaznost": vlaznost,
                 "pritisak": pritisak,
-                "vetar": vetar_txt
+                "vetar": vetar_full
             })
 
         return data
