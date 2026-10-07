@@ -226,17 +226,19 @@
         // ================= AUTOMATSKE STANICE =================
 
         async function loadAutoStationsList() {
+            // Uzimamo najnovijih 500 redova iz baze da pokrijemo sve stanice iz poslednjih prolaza scrapera
             const { data, error } = await supabaseClient
                 .from('automatske_stanice')
                 .select('stanica')
-                .order('stanica', { ascending: true });
+                .order('id', { ascending: false })
+                .limit(500);
 
             if (error) {
                 console.error("Greška pri učitavanju automatskih stanica:", error);
                 return;
             }
 
-            const uniqueStations = [...new Set(data.map(item => item.stanica))];
+            const uniqueStations = [...new Set(data.map(item => item.stanica))].sort((a, b) => a.localeCompare(b, 'sr'));
             const select = document.getElementById('autoSelect');
             select.innerHTML = '';
 
@@ -271,7 +273,7 @@
                 query = query.lte('created_at', new Date(toVal).toISOString());
             }
 
-            // AKO NIŠTA NIJE IZABRANO: Učitaj samo poslednja 24 sata
+            // Ako ništa nije izabrano za datum, uzimamo samo poslednja 24 sata
             if (!fromVal && !toVal) {
                 const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
                 query = query.gte('created_at', last24h);
@@ -361,17 +363,19 @@
         // ================= GLAVNE STANICE =================
 
         async function loadCities() {
+            // Uzimamo najnovijih 500 redova iz baze da pokrijemo sve gradove iz poslednjih prolaza scrapera
             const { data, error } = await supabaseClient
                 .from('merenja')
                 .select('grad')
-                .order('grad', { ascending: true });
+                .order('id', { ascending: false })
+                .limit(500);
 
             if (error) {
                 console.error("Greška pri učitavanju gradova:", error);
                 return;
             }
 
-            const uniqueCities = [...new Set(data.map(item => item.grad))];
+            const uniqueCities = [...new Set(data.map(item => item.grad))].sort((a, b) => a.localeCompare(b, 'sr'));
             const select = document.getElementById('citySelect');
             select.innerHTML = '';
 
@@ -406,7 +410,7 @@
                 query = query.lte('vreme_osmotreno', new Date(toVal).toISOString());
             }
 
-            // AKO NIŠTA NIJE IZABRANO: Učitaj samo poslednja 24 sata
+            // Ako ništa nije izabrano za datum, uzimamo samo poslednja 24 sata
             if (!fromVal && !toVal) {
                 const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
                 query = query.gte('vreme_osmotreno', last24h);
