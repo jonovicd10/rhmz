@@ -223,10 +223,28 @@
             }
         }
 
+        // Pomoćne funkcije za eksplicitno prevođenje UTC datuma u srpsko lokalno vreme (Europe/Belgrade)
+        function formatLocalTime(dateStr) {
+            if (!dateStr) return '--';
+            const date = new Date(dateStr);
+            return date.toLocaleTimeString('sr-RS', {
+                timeZone: 'Europe/Belgrade',
+                hour: '2-digit',
+                minute: '2-digit'
+            }) + 'h';
+        }
+
+        function formatLocalDateTime(dateStr) {
+            if (!dateStr) return '--';
+            const date = new Date(dateStr);
+            return date.toLocaleString('sr-RS', {
+                timeZone: 'Europe/Belgrade'
+            });
+        }
+
         // ================= AUTOMATSKE STANICE =================
 
         async function loadAutoStationsList() {
-            // Uzimamo najnovijih 500 redova iz baze da pokrijemo sve stanice iz poslednjih prolaza scrapera
             const { data, error } = await supabaseClient
                 .from('automatske_stanice')
                 .select('stanica')
@@ -273,7 +291,6 @@
                 query = query.lte('created_at', new Date(toVal).toISOString());
             }
 
-            // Ako ništa nije izabrano za datum, uzimamo samo poslednja 24 sata
             if (!fromVal && !toVal) {
                 const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
                 query = query.gte('created_at', last24h);
@@ -292,8 +309,9 @@
             document.getElementById('currentAutoCard').classList.remove('hidden');
             document.getElementById('autoStationName').textContent = latest.stanica;
 
-            const vremeTekst = latest.vreme ? latest.vreme : new Date(latest.created_at).toLocaleTimeString('sr-RS', { hour: '2-digit', minute: '2-digit' });
-            document.getElementById('autoTimeObserved').textContent = "Poslednji osmotreni sat: " + vremeTekst;
+            // Uvek koristimo created_at timestamp pretvoren u Europe/Belgrade vreme umesto nekonvertovanog d.vreme stringa
+            const vremeTekst = formatLocalDateTime(latest.created_at);
+            document.getElementById('autoTimeObserved').textContent = "Poslednje osmotreno: " + vremeTekst;
 
             document.getElementById('autoTempVal').textContent = (latest.temperatura !== null ? latest.temperatura : '--') + ' °C';
             document.getElementById('autoPressVal').textContent = (latest.pritisak !== null ? latest.pritisak : '--') + ' hPa';
@@ -315,11 +333,8 @@
         }
 
         function renderAutoChart(historyData) {
-            const labels = historyData.map(d => {
-                if (d.vreme) return d.vreme;
-                const date = new Date(d.created_at);
-                return date.toLocaleTimeString('sr-RS', { hour: '2-digit', minute: '2-digit' }) + 'h';
-            });
+            // Konvertujemo created_at u lokalno vreme (Europe/Belgrade UTC+2/UTC+1)
+            const labels = historyData.map(d => formatLocalTime(d.created_at));
 
             const temps = historyData.map(d => d.temperatura);
             const ctx = document.getElementById('autoTempChart').getContext('2d');
@@ -363,7 +378,6 @@
         // ================= GLAVNE STANICE =================
 
         async function loadCities() {
-            // Uzimamo najnovijih 500 redova iz baze da pokrijemo sve gradove iz poslednjih prolaza scrapera
             const { data, error } = await supabaseClient
                 .from('merenja')
                 .select('grad')
@@ -410,7 +424,6 @@
                 query = query.lte('vreme_osmotreno', new Date(toVal).toISOString());
             }
 
-            // Ako ništa nije izabrano za datum, uzimamo samo poslednja 24 sata
             if (!fromVal && !toVal) {
                 const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
                 query = query.gte('vreme_osmotreno', last24h);
@@ -429,7 +442,7 @@
             document.getElementById('currentCard').classList.remove('hidden');
             document.getElementById('cityName').textContent = latest.grad;
 
-            const formatiranoVreme = new Date(latest.vreme_osmotreno).toLocaleString('sr-RS');
+            const formatiranoVreme = formatLocalDateTime(latest.vreme_osmotreno);
             document.getElementById('timeObserved').textContent = "Poslednje osmotreno: " + formatiranoVreme;
 
             document.getElementById('weatherDesc').textContent = latest.opis_vremena || 'Bez opisa';
@@ -458,10 +471,7 @@
         }
 
         function renderChart(historyData) {
-            const labels = historyData.map(d => {
-                const date = new Date(d.vreme_osmotreno);
-                return date.toLocaleTimeString('sr-RS', { hour: '2-digit', minute: '2-digit' }) + 'h';
-            });
+            const labels = historyData.map(d => formatLocalTime(d.vreme_osmotreno));
 
             const temps = historyData.map(d => d.temperatura);
             const ctx = document.getElementById('tempChart').getContext('2d');
